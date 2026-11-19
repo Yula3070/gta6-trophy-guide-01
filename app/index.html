@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leonida Ledger — GTA VI Trophy Guide &amp; Tracker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="masthead">
+  <p class="kicker">Grand Theft Auto VI &middot; PlayStation 5 &middot; 55 trophies</p>
+  <h1>Leonida Ledger</h1>
+  <p class="tagline">A road-trip guide to the platinum: four stops across Leonida, every trophy
+  with its official name, description and grade, a guide in our own words, and a tracker
+  that remembers your progress. No Rockstar logo, no official art — this look is ours.</p>
+  <div class="progress-wrap" aria-label="Overall progress">
+    <div class="progress-label"><span id="progressText">0 of 55 earned</span><span id="progressPct">0%</span></div>
+    <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+    <p class="grade-counts" id="gradeCounts"></p>
+  </div>
+</header>
+
+<nav class="tabs" aria-label="Views">
+  <button type="button" data-view="checklist" class="tab active">Checklist</button>
+  <button type="button" data-view="roadmap" class="tab">Roadmap to Platinum</button>
+  <button type="button" data-view="missable" class="tab">Missable <span id="missableTabCount"></span></button>
+</nav>
+
+<section class="toolbar" aria-label="Filters and settings">
+  <label class="field">Search <input id="search" type="search" placeholder="Trophy name or description…" autocomplete="off"></label>
+  <label class="field">Kind
+    <select id="kindFilter">
+      <option value="all">All kinds</option>
+      <option value="story">Story</option>
+      <option value="missable">Missable</option>
+      <option value="collectibles">Collectibles</option>
+      <option value="activities">Activities</option>
+      <option value="online">Online (0 in this list)</option>
+    </select>
+  </label>
+  <label class="field">Grade
+    <select id="gradeFilter">
+      <option value="all">All grades</option>
+      <option value="platinum">Platinum</option>
+      <option value="gold">Gold</option>
+      <option value="silver">Silver</option>
+      <option value="bronze">Bronze</option>
+    </select>
+  </label>
+  <label class="check"><input id="spoilerToggle" type="checkbox"> Hide story spoilers</label>
+  <label class="check"><input id="hideEarnedToggle" type="checkbox"> Hide earned</label>
+  <span class="spacer"></span>
+  <button id="exportBtn" type="button">Export progress</button>
+  <label class="import-btn">Import progress <input id="importInput" type="file" accept="application/json,.json"></label>
+</section>
+
+<p class="online-note" id="onlineNote" hidden>This game lists no online trophies — all 55 are earned in single-player, so the Online filter shows 0. It is kept so the filter list matches the competition's kinds exactly.</p>
+
+<main class="layout">
+  <section class="list-col">
+    <section id="nextUp" class="next-up" aria-label="Next up"></section>
+    <div id="listView"></div>
+  </section>
+  <aside id="detailPanel" class="detail" aria-label="Trophy detail"></aside>
+</main>
+
+<footer class="colophon">
+  <p>Names, descriptions and grades are exactly as PlayStation publishes them, as listed by
+  Exophase and PSNProfiles before this bounty opened. Guides are written for this entry, in our own
+  words, from the official descriptions only. The game launched 19 November 2026: no verified
+  playthrough exists yet, so where a location or step cannot be confirmed from the official
+  description, the guide says so plainly instead of guessing. Progress, notes and settings are
+  saved in your browser (localStorage) and never leave it; export writes a JSON file you can import back.</p>
+  <p>Leonida Ledger — an unofficial fan guide. Not affiliated with Rockstar Games or PlayStation.</p>
+</footer>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
