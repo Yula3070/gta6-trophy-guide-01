@@ -1,45 +1,71 @@
-// filters.js — which trophies a view shows, and what the spoiler setting hides.
-// Kinds follow the competition: story, missable, collectibles, activities, online.
-// This list has no online trophies, so the online filter always matches none —
-// the filter stays in the list so the kinds match the competition exactly.
+// Filtering and ordering for the trophy list.
+// Kinds follow the official descriptions: story missions and strands, collectible hunts,
+// repeatable activities, and the two capstones (100% completion, platinum). "Missable" is a
+// cross-cutting flag, and "online" exists as a filter because the bounty names it — the official
+// 55-trophy list contains no online trophies, so that filter honestly comes up empty.
 
-export function isStoryTrophy(trophy) {
-  return trophy.kind === 'story';
+export const KIND_FILTERS = [
+  { key: 'all', label: 'All 55' },
+  { key: 'story', label: 'Story' },
+  { key: 'missable', label: 'Missable' },
+  { key: 'collectibles', label: 'Collectibles' },
+  { key: 'activities', label: 'Activities' },
+  { key: 'online', label: 'Online' },
+];
+
+export const KIND_TITLES = {
+  platinum: 'The Platinum',
+  story: 'Story & Mission Strands',
+  collectibles: 'Collectibles & Exploration',
+  activities: 'Activities, Crime & Moments',
+  completion: 'The Long Haul',
+};
+
+const KIND_ORDER = ['platinum', 'story', 'collectibles', 'activities', 'completion'];
+const GRADE_ORDER = { platinum: 0, gold: 1, silver: 2, bronze: 3 };
+
+export function matchesKind(trophy, kind) {
+  if (kind === 'all') return true;
+  if (kind === 'missable') return trophy.missable === true;
+  if (kind === 'online') return trophy.kind === 'online';
+  return trophy.kind === kind;
 }
 
-export function isSpoilerHidden(trophy, state) {
-  return state.settings.spoiler && isStoryTrophy(trophy) && !state.earned.includes(trophy.id);
+export function matchesSearch(trophy, needle) {
+  if (!needle) return true;
+  const haystack = [
+    trophy.name,
+    trophy.description,
+    trophy.guide,
+    ...(trophy.steps ?? []),
+    trophy.missableWhy ?? '',
+  ].join(' ').toLowerCase();
+  return needle.toLowerCase().split(/\s+/).every((word) => haystack.includes(word));
 }
 
-export function applyFilters(trophies, state, criteria) {
-  const query = (criteria.search ?? '').trim().toLowerCase();
-  return trophies.filter((trophy) => {
-    if (criteria.kind === 'missable' && !trophy.missable) return false;
-    if (criteria.kind === 'online') return false;
-    if (criteria.kind && criteria.kind !== 'all' && criteria.kind !== 'missable' && criteria.kind !== 'online' && trophy.kind !== criteria.kind) return false;
-    if (criteria.grade && criteria.grade !== 'all' && trophy.grade !== criteria.grade) return false;
-    if (state.settings.hideEarned && state.earned.includes(trophy.id)) return false;
-    if (query) {
-      const haystack = `${trophy.name} ${trophy.description} ${trophy.guide}`.toLowerCase();
-      if (!haystack.includes(query)) return false;
-    }
-    return true;
-  });
+export function applyFilters(trophies, { kind, search }) {
+  return trophies.filter((t) => matchesKind(t, kind) && matchesSearch(t, search));
 }
 
-export function gradeRank(grade) {
-  return { platinum: 0, gold: 1, silver: 2, bronze: 3 }[grade] ?? 4;
+// Grouped view for the checklist: kinds in roadmap order, grades best-first inside each kind,
+// official list order as the tiebreak.
+export function groupByKind(trophies) {
+  const groups = [];
+  for (const kind of KIND_ORDER) {
+    const items = trophies
+      .filter((t) => t.kind === kind)
+      .sort((a, b) => (GRADE_ORDER[a.grade] - GRADE_ORDER[b.grade]) || (a.id - b.id));
+    if (items.length) groups.push({ kind, title: KIND_TITLES[kind], items });
+  }
+  return groups;
 }
 
-// Next Up: the easiest unearned trophy next — earliest roadmap stage first,
-// then easiest grade, then the list's own order. Missable trophies that are still
-// open in the current stage are suggested before later-stage ones.
-export function pickNextUp(trophies, state) {
-  const remaining = trophies.filter((t) => !state.earned.includes(t.id));
-  if (remaining.length === 0) return null;
-  remaining.sort((a, b) =>
-    (a.roadmap_stage - b.roadmap_stage) ||
-    (gradeRank(a.grade) - gradeRank(b.grade)) ||
-    (a.id - b.id));
-  return remaining[0];
+export function byRoadmapStage(trophies) {
+  const stages = new Map();
+  for (const t of trophies) {
+    if (!stages.has(t.stage)) stages.set(t.stage, []);
+    stages.get(t.stage).push(t);
+  }
+  for (const items of stages.values()) items.sort((a, b) => a.id - b.id);
+  return stages;
 }
