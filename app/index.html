@@ -1,20 +1,97 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vice Ledger — GTA VI Trophy Guide &amp; Tracker</title>
-<meta name="description" content="An offline guide and tracker for all 55 PlayStation 5 trophies of Grand Theft Auto VI: cited guides, a roadmap to platinum, missables flagged with reasons, progress saved in your browser.">
+<title>Vice Ledger — GTA VI trophy guide &amp; tracker</title>
+<meta name="description" content="An offline guide and tracker for the 55 PlayStation 5 trophies of Grand Theft Auto VI: roadmap, missables, cited guides, saved progress.">
 <link rel="stylesheet" href="style.css">
-<link rel="icon" href="data:,">
 </head>
 <body>
-<div id="app" class="shell">
-  <header id="masthead"></header>
-  <nav id="tabs" aria-label="Views"></nav>
-  <main id="view" tabindex="-1"></main>
-  <footer id="colophon"></footer>
-</div>
+<header class="masthead">
+  <div class="brand">
+    <p class="kicker">Leonida trophy dossier</p>
+    <h1>Vice Ledger</h1>
+    <p class="tagline">Every GTA VI trophy, what it takes, and what you can lose — in one ledger.</p>
+  </div>
+  <div class="ledger-summary" aria-label="Progress summary">
+    <div class="pct"><span id="progressPct">0%</span><small id="progressCount">0 of 55 earned</small></div>
+    <ul id="gradeCounts" class="grade-counts"></ul>
+    <p class="time-left" id="timeLeft"></p>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Views">
+  <button type="button" role="tab" data-view="checklist" aria-selected="true">Checklist</button>
+  <button type="button" role="tab" data-view="roadmap" aria-selected="false">Roadmap</button>
+  <button type="button" role="tab" data-view="missables" aria-selected="false">Missables <span id="missableBadge" class="badge"></span></button>
+</nav>
+
+<section class="toolbar" aria-label="Filters">
+  <label class="search">Search
+    <input id="search" type="search" placeholder="Name, mission, place…" autocomplete="off">
+  </label>
+  <label>Grade
+    <select id="gradeFilter">
+      <option value="all">All grades</option>
+      <option value="platinum">Platinum</option>
+      <option value="gold">Gold</option>
+      <option value="silver">Silver</option>
+      <option value="bronze">Bronze</option>
+    </select>
+  </label>
+  <label>Kind
+    <select id="kindFilter">
+      <option value="all">All kinds</option>
+      <option value="story">Story</option>
+      <option value="collectible">Collectibles</option>
+      <option value="activity">Activities</option>
+      <option value="misc">Miscellaneous</option>
+    </select>
+  </label>
+  <label>Status
+    <select id="earnedFilter">
+      <option value="all">All</option>
+      <option value="earned">Earned</option>
+      <option value="missing">Not yet</option>
+    </select>
+  </label>
+  <label>Sort
+    <select id="sortBy">
+      <option value="roadmap">Roadmap order</option>
+      <option value="grade">Grade</option>
+      <option value="name">Name A–Z</option>
+      <option value="quickest">Quickest first</option>
+    </select>
+  </label>
+  <label class="toggle"><input id="missableOnly" type="checkbox"> Missables only</label>
+  <label class="toggle"><input id="spoilerToggle" type="checkbox" checked> Spoiler shield</label>
+</section>
+
+<main class="layout">
+  <section id="listView" class="view" aria-label="Trophy checklist"></section>
+  <section id="roadmapView" class="view" aria-label="Roadmap to the platinum" hidden></section>
+  <section id="missableView" class="view" aria-label="Missable trophies" hidden></section>
+  <aside id="detail" class="detail" aria-label="Trophy detail"></aside>
+</main>
+
+<footer class="colophon">
+  <div class="progress-actions">
+    <button id="exportBtn" type="button">Export progress</button>
+    <label class="import-label">Import progress
+      <input id="importFile" type="file" accept="application/json">
+    </label>
+    <button id="resetBtn" type="button" class="danger">Reset progress</button>
+  </div>
+  <p class="sources-note">
+    Names, descriptions and grades: the official PlayStation list for Grand Theft Auto VI,
+    as catalogued by <a href="https://www.exophase.com/">Exophase</a> and
+    <a href="https://psnprofiles.com/">PSNProfiles</a> (the two agree on all 55).
+    Guides are written for this ledger; each trophy names its sources beside its guide.
+    Progress lives in this browser only — export it before you clear site data.
+  </p>
+</footer>
+
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
