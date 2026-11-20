@@ -3,72 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leonida Trophy Atlas — GTA VI Trophy Guide &amp; Tracker</title>
-<meta name="description" content="An offline guide and tracker for the 55 PlayStation 5 trophies of Grand Theft Auto VI: official list, cited guides, roadmap to platinum, missable flags, saved progress.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cpath d='M14 6h20v6h7v3c0 6-4 10-9 11a13 13 0 0 1-8 5.6V36h5v4H19v-4h5v-4.4A13 13 0 0 1 16 26C11 25 7 21 7 15v-3h7V6Z' fill='%23ffd166'/%3E%3C/svg%3E">
+<title>Vice Ledger — GTA VI Trophy Guide &amp; Tracker</title>
+<meta name="description" content="An offline guide and tracker for all 55 PlayStation 5 trophies of Grand Theft Auto VI: cited guides, a roadmap to platinum, missables flagged with reasons, progress saved in your browser.">
 <link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:,">
 </head>
 <body>
-<header class="masthead">
-  <div class="masthead-inner">
-    <div class="brand">
-      <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true"><path d="M14 6h20v6h7v3c0 6-4 10-9 11a13 13 0 0 1-8 5.6V36h5v4H19v-4h5v-4.4A13 13 0 0 1 16 26C11 25 7 21 7 15v-3h7V6Zm-4 9c.4 3 2 5 4.6 5.6A14 14 0 0 1 14 15h-4Zm28 0h-4a14 14 0 0 1-.6 5.6C36 20 37.6 18 38 15Z" fill="currentColor"/></svg>
-      <div>
-        <h1>Leonida Trophy Atlas</h1>
-        <p class="tagline">Grand Theft Auto VI · PlayStation 5 · all 55 trophies, guided and tracked offline</p>
-      </div>
-    </div>
-    <section class="progress-card" aria-label="Your progress">
-      <div class="progress-numbers">
-        <strong id="earned-count">0</strong><span class="of">/ 55 earned</span>
-        <span id="earned-percent" class="percent">0%</span>
-      </div>
-      <div class="progress-bar" role="progressbar" aria-label="Trophies earned" aria-valuemin="0" aria-valuemax="55" aria-valuenow="0" id="progress-bar"><span id="progress-fill"></span></div>
-      <ul class="grade-tally" id="grade-tally"></ul>
-    </section>
-  </div>
-  <div class="next-up" id="next-up" hidden></div>
-</header>
-
-<div class="toolbar" role="region" aria-label="Find and filter trophies">
-  <nav class="view-tabs" aria-label="Views">
-    <button type="button" data-view="checklist" class="tab is-active">Checklist</button>
-    <button type="button" data-view="roadmap" class="tab">Roadmap to Platinum</button>
-    <button type="button" data-view="missable" class="tab">Missables <span class="tab-count" id="missable-count"></span></button>
-  </nav>
-  <div class="toolbar-row">
-    <label class="search-box">
-      <span class="visually-hidden">Search trophies</span>
-      <input type="search" id="search" placeholder="Search a trophy, mission or place…" autocomplete="off">
-    </label>
-    <div class="chips" id="kind-chips" role="group" aria-label="Filter by kind"></div>
-    <label class="spoiler-toggle" title="Hide the names and descriptions of story trophies you have not earned yet">
-      <input type="checkbox" id="spoiler-toggle">
-      <span>Spoiler guard</span>
-    </label>
-    <div class="io-buttons">
-      <button type="button" id="export-btn">Export progress</button>
-      <label class="import-label">Import progress<input type="file" id="import-file" accept="application/json,.json" hidden></label>
-      <button type="button" id="reset-btn" class="quiet">Reset</button>
-    </div>
-  </div>
-  <p class="io-note" id="io-note" role="status"></p>
+<div id="app" class="shell">
+  <header id="masthead"></header>
+  <nav id="tabs" aria-label="Views"></nav>
+  <main id="view" tabindex="-1"></main>
+  <footer id="colophon"></footer>
 </div>
-
-<main class="layout">
-  <section class="list-pane" aria-label="Trophy list">
-    <div id="list-root"></div>
-    <p class="empty-note" id="empty-note" hidden></p>
-  </section>
-  <aside class="detail-pane" id="detail-pane" aria-label="Trophy detail"></aside>
-</main>
-
-<section class="roadmap-pane" id="roadmap-pane" hidden aria-label="Roadmap to platinum"></section>
-
-<footer class="colophon">
-  <p>Official names, descriptions and grades: the PlayStation 5 list for Grand Theft Auto VI as published by Exophase and PSNProfiles (55 trophies: 1 platinum, 2 gold, 6 silver, 46 bronze; PlayStation hides 28 until earned). Guides are written for this atlas from those official descriptions and the sources cited beside each trophy — a source is cited, never copied. Hidden flags follow PlayStation's published count of 28, assigned to the story-linked trophies. Progress lives only in your browser (localStorage); export it to a file to keep or move it. No network is used at run time.</p>
-</footer>
-
 <script type="module" src="js/main.js"></script>
 </body>
 </html>
