@@ -1,45 +1,40 @@
-// Vice Ledger entry program for gta6-trophy-guide-01 (Node 22, standard library only).
-// The guide is the app/ folder next to this file: static files that open at
-// app/index.html in a desktop browser and run fully offline. This program is
-// only the courier — it copies app/ and screenshots/ into the output folder
-// (/output in the grader, MAKEFUN_OUTPUT_DIR anywhere else) and writes
-// dossier.json with the kit's vendored library, untouched.
+// Vice Ledger hand-in (Node 22, standard library only).
+//
+// The guide itself is the app/ folder beside this file: static HTML, CSS and
+// ES modules that run offline in a browser, with the trophy data in
+// app/data/trophies.json. This program packages it for the grader: it copies
+// app/ and screenshots/ into the output folder and writes dossier.json there
+// with the vendored make.fun library, which the scorer rebuilds and compares
+// byte for byte — so vendor/makefun-frontend.ts stays exactly as shipped.
+//
+// Locally, MAKEFUN_OUTPUT_DIR stands in for the grader's /output:
+//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// To look at the guide itself: node serve.ts, then open the printed URL.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
-const repoDir = fileURLToPath(new URL('.', import.meta.url));
-const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const repoRoot = fileURLToPath(new URL('.', import.meta.url));
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// Fail loudly before copying anything if the guide is incomplete: a dossier
-// built from a missing app/ or an empty screenshots/ would only waste a
-// grading run, so check the two inputs the gate cares about up front.
-for (const required of ['app/index.html', 'app/data/trophies.json', 'screenshots']) {
-  if (!existsSync(join(repoDir, required))) {
-    throw new Error(`Vice Ledger: missing ${required} — build the guide before handing it in`);
-  }
-}
+mkdirSync(outputDir, { recursive: true });
+cpSync(join(repoRoot, 'app'), join(outputDir, 'app'), { recursive: true });
 
-mkdirSync(outDir, { recursive: true });
-cpSync(join(repoDir, 'app'), join(outDir, 'app'), { recursive: true });
-mkdirSync(join(outDir, 'screenshots'), { recursive: true });
-if (existsSync(join(repoDir, 'screenshots'))) {
-  cpSync(join(repoDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
-}
+const shotsDir = join(outputDir, 'screenshots');
+mkdirSync(shotsDir, { recursive: true });
+const shotsSource = join(repoRoot, 'screenshots');
+if (existsSync(shotsSource)) cpSync(shotsSource, shotsDir, { recursive: true });
 
-// The caps mirror the scorer's gate: dossier text 160 KiB, at most 4
-// screenshots of 256 KiB, app/ at most 993 entries and 48 MiB.
-const dossier = buildDossier(outDir, {
+// The scorer's caps, mirrored so a local run refuses what the gate would:
+// dossier text at most 163840 bytes, at most 4 screenshots of 256 KiB each,
+// app/ at most 993 entries and 48 MiB.
+const dossier = buildDossier(outputDir, {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
   app_max_files: 993,
   app_max_bytes: 50331648,
 });
-writeFileSync(join(outDir, 'dossier.json'), dossier);
-
-// Report the dossier size against the gate's 1.5 MiB cap so a local run
-// shows the same headroom the scorer will see.
-const dossierBytes = Buffer.byteLength(dossier, 'utf8');
-console.log(`Vice Ledger handed in to ${outDir} (dossier.json ${dossierBytes} bytes of 1572864 max)`);
+writeFileSync(join(outputDir, 'dossier.json'), dossier);
+console.log(`Vice Ledger handed in to ${outputDir} (dossier.json ${Buffer.byteLength(dossier)} bytes)`);

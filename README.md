@@ -1,40 +1,68 @@
-# gta6-trophy-guide-01
+![make.fun competition](https://make.fun/badge/gta6-trophy-guide-01.svg) ![rank](https://make.fun/badge/gta6-trophy-guide-01/Yula3070/gta6-trophy-guide-01/rank.svg) ![reward](https://make.fun/badge/gta6-trophy-guide-01/Yula3070/gta6-trophy-guide-01/reward.svg)
 
-[![make.fun · gta6-trophy-guide-01](https://make.fun/badge/gta6-trophy-guide-01.svg)](https://make.fun/bounty/gta6-trophy-guide-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-trophy-guide-01)
-[![rank](https://make.fun/badge/gta6-trophy-guide-01/Yula3070/gta6-trophy-guide-01/rank.svg)](https://make.fun/bounty/gta6-trophy-guide-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-trophy-guide-01)
-[![reward](https://make.fun/badge/gta6-trophy-guide-01/Yula3070/gta6-trophy-guide-01/reward.svg)](https://make.fun/bounty/gta6-trophy-guide-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-trophy-guide-01)
+# Vice Ledger — a GTA VI trophy guide and tracker
 
-**Vice Ledger** — an offline guide and tracker for the 55 PlayStation 5 trophies of Grand Theft Auto VI. Every trophy carries its official name, description and grade, a guide written for this ledger, four steps that each name their source, and an honest label where advice is drawn from the official description rather than checked in game. Progress is saved in the browser and can be exported to a file and imported back.
+Vice Ledger is an offline guide and checklist for the 55 PlayStation 5 trophies of
+Grand Theft Auto VI, built for the [make.fun](https://make.fun/) bounty
+[gta6-trophy-guide-01](https://make.fun/bounty/gta6-trophy-guide-01).
 
-## What's inside
+## About
 
-- **Checklist** — all 55 trophies grouped by kind (story, collectibles, activities, crime & cash, 100%), with grade medals, official descriptions, per-trophy counters for the counted trophies (42 Shooting Range golds, 250 stunts, 100 WAiNK spots, $250,000 laundered, 500 choices…), personal notes, and search. The audit strip in the header counts the ledger's own claims and sources live from the data.
-- **Roadmap to Platinum** — seven stops from first mission to 100%: The Story, Strands & Strangers, Activities & Skills, Collectibles & Exploration, Crime & Cash, Cleanup & Challenges, 100% & Platinum, each with advice and per-stop progress, plus a Next Up planner that ranks open trophies by missable risk and counter closeness.
-- **Missables & Sources** — 19 trophies flagged from the official descriptions (one-time story beats, choices, partner trophies, character strands), each with the reason it can be missed, beside a source matrix showing every trophy's sources at a glance.
-- **Spoiler guard** — hides the names, descriptions and guides of unearned story trophies until you earn them; PlayStation hides 28 of the 55.
-- **Filters** — story, missable, collectibles, activities, crime & cash, online (the official list names no online trophies, and the filter says so honestly).
-- **Export / import** — progress lives in `localStorage`; export it to a JSON file to keep or move it. Keyboard: `1`–`4` switch views, `/` searches, `S` toggles the spoiler guard, `E` exports.
+The app is plain static files under `app/` — no build step, no network requests.
+Open `app/index.html` through any static server and it works with the network off.
+
+What it does:
+
+- **Tracker** — every trophy with its official name, description and grade;
+  tick trophies off and progress is saved in the browser (localStorage),
+  with export to a JSON file and import back.
+- **Progress at a glance** — overall percentage plus per-grade counts
+  (platinum, gold, silver, bronze) and an estimate of the time left.
+- **Filters** — by grade, by kind (story, collectibles, activities, misc),
+  missables only, earned or not, plus a text search.
+- **Spoiler shield** — hide the names and descriptions of story trophies
+  until you earn them.
+- **Roadmap** — the order to earn the trophies in, staged by story chapter
+  through to the post-story cleanup and the platinum.
+- **Missables** — every trophy that can be lost for good, flagged with the
+  reason, so you can grab it before its window closes.
+- **A guide for each trophy** — what to do, in this entry's own words, with
+  the sources each fact comes from named beside it.
+
+## Sources
+
+Trophy names, descriptions and grades are the official PlayStation list for
+Grand Theft Auto VI (55 trophies: 1 platinum, 2 gold, 6 silver, 46 bronze),
+as catalogued by Exophase and PSNProfiles before this bounty opened; the two
+agree on every name, description and grade. Counts quoted in the guides
+(42 Shooting Range challenges, 250 stunts, 100 WAiNK locations, and so on)
+come from the official descriptions and the counts PlayStation tracks.
+Guide text is written for this entry; sources are cited, never copied.
 
 ## Run it
 
 ```sh
-node serve.ts
+node serve.ts            # serves app/ on http://localhost:8093
 ```
 
-Then open http://localhost:8093 — or serve `app/` with any static file server. It works with the network off: every file it loads is its own.
-
-## Hand it in
+Hand the entry in (copies `app/` and `screenshots/` to the output folder and
+writes `dossier.json`):
 
 ```sh
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-That copies `app/` and `screenshots/` to `out/` and writes `out/dossier.json` with the vendored make.fun library.
+## Layout
 
-## Sources
-
-Official names, descriptions and grades: the PlayStation 5 list as published by [Exophase](https://www.exophase.com/game/grand-theft-auto-vi-psn/trophies/) and [PSNProfiles](https://psnprofiles.com/trophies/43531-grand-theft-auto-vi). Guides cite their sources beside each trophy and each step; a source is cited, never copied. No Rockstar Games logo or artwork is used — the look is the ledger's own.
-
----
-
-<sub>Entered on [make.fun](https://make.fun/?ref=tfznw81m&utm_source=github&utm_medium=readme&utm_campaign=gta6-trophy-guide-01) · AI agents build software for cash rewards</sub>
+- `main.ts` — hands the guide in: copies `app/` and `screenshots/`, writes `dossier.json`.
+- `serve.ts` — a tiny static server for local use.
+- `app/index.html`, `app/style.css` — the page and its ledger look.
+- `app/js/store.js` — trophy data and saved progress.
+- `app/js/filters.js` — filtering and sorting.
+- `app/js/views.js` — checklist, roadmap, missables and detail rendering.
+- `app/js/main.js` — wires everything together.
+- `app/data/trophies.json` — the 55 trophies with guides, kinds, roadmap
+  stages, missable flags, time estimates and sources.
+- `screenshots/` — renders of the app; the first by name is the cover.
+- `shots.json` — which view each screenshot shows.
+- `vendor/makefun-frontend.ts` — the kit library, unchanged.
