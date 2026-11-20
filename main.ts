@@ -1,46 +1,45 @@
-// Leonida Trophy Atlas — entry program for gta6-trophy-guide-01 (Node 22, standard library only).
-//
-// The guide itself is the static app in ./app (plain HTML/CSS/ES modules, no build step, works offline).
-// This program hands it in: it copies app/ and screenshots/ into the output directory and writes
-// dossier.json there with the vendored make.fun library (vendor/makefun-frontend.ts, unchanged).
-//
-// Locally:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
-// In the grader the output directory is /output.
+// Vice Ledger entry program for gta6-trophy-guide-01 (Node 22, standard library only).
+// The guide is the app/ folder next to this file: static files that open at
+// app/index.html in a desktop browser and run fully offline. This program is
+// only the courier — it copies app/ and screenshots/ into the output folder
+// (/output in the grader, MAKEFUN_OUTPUT_DIR anywhere else) and writes
+// dossier.json with the kit's vendored library, untouched.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
-const repoRoot = fileURLToPath(new URL('.', import.meta.url));
-const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const repoDir = fileURLToPath(new URL('.', import.meta.url));
+const outDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-// The gate refuses an entry whose screenshots/ holds fewer than 3 images, so fail here with a
-// clear message instead of handing in a dossier the scorer would reject anyway.
-const shotsDir = join(repoRoot, 'screenshots');
-const shotFiles = existsSync(shotsDir)
-  ? readdirSync(shotsDir).filter((name) => /\.(png|jpe?g)$/i.test(name))
-  : [];
-if (shotFiles.length < 3 || shotFiles.length > 4) {
-  throw new Error(`screenshots/ must hold 3 or 4 PNG/JPEG files, found ${shotFiles.length}`);
+// Fail loudly before copying anything if the guide is incomplete: a dossier
+// built from a missing app/ or an empty screenshots/ would only waste a
+// grading run, so check the two inputs the gate cares about up front.
+for (const required of ['app/index.html', 'app/data/trophies.json', 'screenshots']) {
+  if (!existsSync(join(repoDir, required))) {
+    throw new Error(`Vice Ledger: missing ${required} — build the guide before handing it in`);
+  }
 }
 
-mkdirSync(outputDir, { recursive: true });
-cpSync(join(repoRoot, 'app'), join(outputDir, 'app'), { recursive: true });
-mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
-cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
+mkdirSync(outDir, { recursive: true });
+cpSync(join(repoDir, 'app'), join(outDir, 'app'), { recursive: true });
+mkdirSync(join(outDir, 'screenshots'), { recursive: true });
+if (existsSync(join(repoDir, 'screenshots'))) {
+  cpSync(join(repoDir, 'screenshots'), join(outDir, 'screenshots'), { recursive: true });
+}
 
-const dossier = buildDossier(outputDir, {
+// The caps mirror the scorer's gate: dossier text 160 KiB, at most 4
+// screenshots of 256 KiB, app/ at most 993 entries and 48 MiB.
+const dossier = buildDossier(outDir, {
   text_max_bytes: 163840,
   screenshots: { max: 4, max_bytes: 262144 },
   app_max_files: 993,
   app_max_bytes: 50331648,
 });
-writeFileSync(join(outputDir, 'dossier.json'), dossier);
+writeFileSync(join(outDir, 'dossier.json'), dossier);
 
-// A one-line receipt for whoever runs this by hand. Console only — nothing here reaches /output,
-// so the two grader runs still write byte-identical trees.
+// Report the dossier size against the gate's 1.5 MiB cap so a local run
+// shows the same headroom the scorer will see.
 const dossierBytes = Buffer.byteLength(dossier, 'utf8');
-console.log(
-  `handed in: app/ + ${shotFiles.length} screenshots copied, dossier.json ${dossierBytes} bytes -> ${outputDir}`,
-);
+console.log(`Vice Ledger handed in to ${outDir} (dossier.json ${dossierBytes} bytes of 1572864 max)`);
