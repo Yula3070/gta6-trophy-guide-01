@@ -1,47 +1,46 @@
-// Leonida Ledger — a gta6-trophy-guide-01 entry (Node 22, standard library only).
-// The guide is this directory's app/ folder: plain static files a browser opens at
-// app/index.html (ES modules, CSS, no build step), offline — it loads nothing over the
-// network, and its trophy list and guides are app/data/trophies.json. This program hands
-// it in: it copies app/ and screenshots/ from beside this file to /output and writes
-// /output/dossier.json, the summary the judge reads (the screenshots, the first load's
-// files and bytes, and the source), with the vendored make.fun library. Leave
-// vendor/makefun-frontend.ts as it is: the scorer requires dossier.json to be byte for
-// byte what its own copy writes.
+// Leonida Trophy Atlas — entry program for gta6-trophy-guide-01 (Node 22, standard library only).
 //
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// The guide itself is the static app in ./app (plain HTML/CSS/ES modules, no build step, works offline).
+// This program hands it in: it copies app/ and screenshots/ into the output directory and writes
+// dossier.json there with the vendored make.fun library (vendor/makefun-frontend.ts, unchanged).
+//
+// Locally:  mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// In the grader the output directory is /output.
 
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-frontend.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+const repoRoot = fileURLToPath(new URL('.', import.meta.url));
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files and directories in app/ or
-// 48 MiB of app files: app/ counts beside /output's own 1000-entry cap, its screenshots/ and dossier.json).
-const dossier = buildDossier(out, { text_max_bytes: 163840, screenshots: { max: 4, max_bytes: 262144 }, app_max_files: 993, app_max_bytes: 50331648 });
-writeFileSync(join(out, 'dossier.json'), dossier);
-
-// Authored summary of what was handed in, for the build log.
-function countFiles(dir) {
-  let files = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    files += entry.isDirectory() ? countFiles(path) : 1;
-  }
-  return files;
+// The gate refuses an entry whose screenshots/ holds fewer than 3 images, so fail here with a
+// clear message instead of handing in a dossier the scorer would reject anyway.
+const shotsDir = join(repoRoot, 'screenshots');
+const shotFiles = existsSync(shotsDir)
+  ? readdirSync(shotsDir).filter((name) => /\.(png|jpe?g)$/i.test(name))
+  : [];
+if (shotFiles.length < 3 || shotFiles.length > 4) {
+  throw new Error(`screenshots/ must hold 3 or 4 PNG/JPEG files, found ${shotFiles.length}`);
 }
-const appFiles = countFiles(join(out, 'app'));
-const shotFiles = readdirSync(join(out, 'screenshots')).filter((name) => !name.startsWith('.'));
-const shotBytes = shotFiles.reduce((sum, name) => sum + statSync(join(out, 'screenshots', name)).size, 0);
-const trophyCount = JSON.parse(readFileSync(join(out, 'app', 'data', 'trophies.json'), 'utf8')).trophies.length;
-console.log(`Leonida Ledger handed in: ${trophyCount} trophies, ${appFiles} app files, ${shotFiles.length} screenshots (${shotBytes} bytes), dossier ${dossier.length} bytes.`);
+
+mkdirSync(outputDir, { recursive: true });
+cpSync(join(repoRoot, 'app'), join(outputDir, 'app'), { recursive: true });
+mkdirSync(join(outputDir, 'screenshots'), { recursive: true });
+cpSync(join(repoRoot, 'screenshots'), join(outputDir, 'screenshots'), { recursive: true });
+
+const dossier = buildDossier(outputDir, {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  app_max_files: 993,
+  app_max_bytes: 50331648,
+});
+writeFileSync(join(outputDir, 'dossier.json'), dossier);
+
+// A one-line receipt for whoever runs this by hand. Console only — nothing here reaches /output,
+// so the two grader runs still write byte-identical trees.
+const dossierBytes = Buffer.byteLength(dossier, 'utf8');
+console.log(
+  `handed in: app/ + ${shotFiles.length} screenshots copied, dossier.json ${dossierBytes} bytes -> ${outputDir}`,
+);
