@@ -1,70 +1,78 @@
-// Vice Ledger filtering: the kind chips, text search, and the spoiler rule.
-//
-// The spoiler guard mirrors PlayStation itself, which hides 28 of the 55
-// trophies until they are earned: with the guard on, an unearned story
-// trophy shows a masked name and description, and its guide stays shut.
+// Vice Ledger filters: decides which trophies a view shows, and in what
+// order. Pure functions over the trophy list — the views render the result.
 
-export const KINDS = [
-  { id: 'all', label: 'All 55' },
-  { id: 'story', label: 'Story' },
-  { id: 'missable', label: 'Missable' },
-  { id: 'collectibles', label: 'Collectibles' },
-  { id: 'activities', label: 'Activities' },
-  { id: 'crime', label: 'Crime & Cash' },
-  { id: 'online', label: 'Online' },
-];
+import { GRADE_RANK, isEarned } from './store.js';
 
-export function matchesKind(trophy, kind) {
-  if (kind === 'all') return true;
-  if (kind === 'missable') return trophy.missable === true;
-  return trophy.kind === kind;
+export const KINDS = ['story', 'collectible', 'activity', 'misc'];
+
+export function defaultFilters() {
+  return {
+    query: '',
+    grade: 'all',
+    kind: 'all',
+    status: 'all', // all | earned | missing
+    missableOnly: false,
+    sort: 'roadmap', // roadmap | grade | name | quickest
+  };
 }
 
-export function matchesSearch(trophy, query) {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  const haystack = [trophy.name, trophy.description, trophy.guide, trophy.kind]
-    .join(' ')
-    .toLowerCase();
-  return haystack.includes(needle);
+function matchesQuery(trophy, query) {
+  if (!query) return true;
+  const haystack = [
+    trophy.name,
+    trophy.description,
+    trophy.guide,
+    trophy.chapter ?? '',
+    trophy.kind ?? '',
+    trophy.stageTitle ?? '',
+  ].join(' ').toLowerCase();
+  return query.toLowerCase().split(/\s+/).every((word) => haystack.includes(word));
 }
 
-export function filterTrophies(trophies, { kind, query }) {
-  return trophies.filter((t) => matchesKind(t, kind) && matchesSearch(t, query));
+export function applyFilters(trophies, filters) {
+  const kept = trophies.filter((t) => {
+    if (filters.grade !== 'all' && t.grade !== filters.grade) return false;
+    if (filters.kind !== 'all' && t.kind !== filters.kind) return false;
+    if (filters.missableOnly && !t.missable) return false;
+    if (filters.status === 'earned' && !isEarned(t.id)) return false;
+    if (filters.status === 'missing' && isEarned(t.id)) return false;
+    return matchesQuery(t, filters.query.trim());
+  });
+  return sortTrophies(kept, filters.sort);
 }
 
-export function isMasked(trophy, store) {
-  return store.spoiler && trophy.kind === 'story' && !store.earned[trophy.id];
-}
-
-export function displayName(trophy, store) {
-  return isMasked(trophy, store) ? 'Hidden story trophy' : trophy.name;
-}
-
-export function displayDescription(trophy, store) {
-  return isMasked(trophy, store)
-    ? 'Masked by the spoiler guard until earned.'
-    : trophy.description;
-}
-
-const GROUP_ORDER = ['platinum', 'story', 'collectibles', 'activities', 'crime', 'completion'];
-const GROUP_LABELS = {
-  platinum: 'The Platinum',
-  story: 'Story & Mission Strands',
-  collectibles: 'Collectibles & Exploration',
-  activities: 'Activities & Skills',
-  crime: 'Crime & Cash',
-  completion: '100% Completion',
-};
-
-export function groupByKind(trophies) {
-  const buckets = new Map();
-  for (const t of trophies) {
-    const key = t.grade === 'platinum' ? 'platinum' : t.kind;
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key).push(t);
+export function sortTrophies(trophies, sort) {
+  const list = [...trophies];
+  switch (sort) {
+    case 'grade':
+      list.sort((a, b) => GRADE_RANK[a.grade] - GRADE_RANK[b.grade] || a.id - b.id);
+      break;
+    case 'name':
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case 'quickest':
+      list.sort((a, b) => (a.estMinutes ?? 0) - (b.estMinutes ?? 0) || a.id - b.id);
+      break;
+    default: // roadmap: stage order first, then the order inside the stage
+      list.sort((a, b) => (a.stage ?? 99) - (b.stage ?? 99) || (a.stageOrder ?? a.id) - (b.stageOrder ?? b.id));
   }
-  return GROUP_ORDER
-    .filter((key) => buckets.has(key))
-    .map((key) => ({ key, label: GROUP_LABELS[key] ?? key, items: buckets.get(key) }));
+  return list;
+}
+
+export function groupByStage(trophies) {
+  const stages = new Map();
+  for (const t of sortTrophies(trophies, 'roadmap')) {
+    const key = t.stage ?? 99;
+    if (!stages.has(key)) {
+      stages.set(key, { stage: key, title: t.stageTitle ?? 'Anytime', note: t.stageNote ?? '', items: [] });
+    }
+    stages.get(key).items.push(t);
+  }
+  return [...stages.values()].sort((a, b) => a.stage - b.stage);
+}
+
+export function missableTrophies(trophies) {
+  return trophies
+    .filter((t) => t.missable)
+    .sort((a, b) => (a.stage ?? 99) - (b.stage ?? 99) || a.id - b.id);
 }

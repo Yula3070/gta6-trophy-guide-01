@@ -1,154 +1,131 @@
-// Vice Ledger boot: load the trophy data, render the four views, wire input.
-//
-// Progress lives in localStorage (see store.js). The ?seed=demo parameter
-// exists so screenshots can show a tracker mid-journey; it writes the same
-// localStorage a real reader's progress would, nothing more.
+// Vice Ledger entry point: loads the trophy data, restores saved progress,
+// wires the toolbar and tabs, and keeps every view in step with the store.
 
-import { loadStore, saveStore, toggleEarned, setCount, setNote, exportProgress, importProgress, resetProgress } from './store.js';
-import { filterTrophies } from './filters.js';
-import { mastheadHtml, tabsHtml, toolbarHtml, checklistHtml, detailHtml, roadmapHtml, missablesHtml, settingsHtml } from './views.js';
+import {
+  allTrophies, exportProgress, importProgress, loadProgress, loadSettings,
+  loadTrophies, resetProgress, saveSettings, setEarned, trophyById,
+} from './store.js';
+import { applyFilters, defaultFilters } from './filters.js';
+import { renderChecklist, renderDetail, renderMissables, renderRoadmap, renderSummary, showView } from './views.js';
 
-const params = new URLSearchParams(location.search);
-const state = {
-  trophies: [],
-  store: loadStore(),
-  view: params.get('view') ?? 'checklist',
-  kind: 'all',
-  query: '',
-  selectedId: params.get('detail') ? Number(params.get('detail')) : 17,
-};
+const filters = defaultFilters();
+let settings = loadSettings();
+let selectedId = null;
+let activeView = 'checklist';
 
-if (params.get('spoiler') === 'on') state.store.spoiler = true;
+const listView = document.getElementById('listView');
+const roadmapView = document.getElementById('roadmapView');
+const missableView = document.getElementById('missableView');
+const detailPanel = document.getElementById('detail');
 
-function seedDemoProgress() {
-  const earnedIds = [2, 3, 4, 8, 9, 10, 15, 16, 19, 21, 35, 36, 39, 41, 44, 45, 51, 55];
-  for (const id of earnedIds) state.store.earned[id] = true;
-  state.store.counts = { 15: 250, 17: 23, 19: 20, 25: 5, 31: 37, 35: 100, 52: 84000, 53: 41200 };
-  delete state.store.earned[17];
-  state.store.notes[17] = 'Gold on the pistol lanes; rifle lanes still silver — replay those first.';
-  saveStore(state.store);
-}
-if (params.get('seed') === 'demo' && !state.store.earned[2]) seedDemoProgress();
-
-const $masthead = document.getElementById('masthead');
-const $tabs = document.getElementById('tabs');
-const $view = document.getElementById('view');
-const $colophon = document.getElementById('colophon');
-
-function selectedTrophy() {
-  return state.trophies.find((t) => t.id === state.selectedId) ?? null;
+function refresh() {
+  renderSummary();
+  const visible = applyFilters(allTrophies(), filters);
+  renderChecklist(listView, visible, settings, selectedId, {
+    grouped: filters.sort === 'roadmap',
+    onToggle: toggleEarned,
+    onSelect: selectTrophy,
+  });
+  renderRoadmap(roadmapView, allTrophies(), settings, selectTrophy);
+  renderMissables(missableView, allTrophies(), settings, selectTrophy);
+  renderDetail(detailPanel, trophyById(selectedId), settings, toggleEarned);
 }
 
-function render() {
-  $masthead.innerHTML = mastheadHtml(state.trophies, state.store);
-  $tabs.innerHTML = tabsHtml(state.view, state.trophies.filter((t) => t.missable).length);
-  $colophon.innerHTML = `<span>Vice Ledger — an unofficial fan guide. Trophy names, descriptions and grades: the official PS5 list (Exophase / PSNProfiles). Guides are this ledger's own words and cite their sources; no Rockstar logo or artwork.</span><span>Works offline · progress in localStorage</span>`;
-
-  if (state.view === 'checklist') {
-    const shown = filterTrophies(state.trophies, state);
-    $view.innerHTML =
-      toolbarHtml(state) +
-      `<div class="panes"><section>${checklistHtml(shown, state.store, state.selectedId)}</section><aside>${detailHtml(selectedTrophy(), state.store)}</aside></div>`;
-  } else if (state.view === 'roadmap') {
-    $view.innerHTML = roadmapHtml(state.trophies, state.store);
-  } else if (state.view === 'missables') {
-    $view.innerHTML = missablesHtml(state.trophies, state.store);
-  } else if (state.view === 'settings') {
-    $view.innerHTML = settingsHtml(state.trophies, state.store);
-  }
-  wireEvents();
+function toggleEarned(id, earned) {
+  setEarned(id, earned);
+  refresh();
 }
 
-function wireEvents() {
-  $tabs.querySelectorAll('[data-view]').forEach((button) =>
-    button.addEventListener('click', () => { state.view = button.dataset.view; render(); }),
-  );
+function selectTrophy(id) {
+  selectedId = id;
+  refresh();
+  if (window.innerWidth <= 980) detailPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function wireToolbar() {
   const search = document.getElementById('search');
-  if (search) {
-    search.addEventListener('input', () => {
-      state.query = search.value;
-      render();
-      const again = document.getElementById('search');
-      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-    });
-  }
-  $view.querySelectorAll('[data-kind]').forEach((button) =>
-    button.addEventListener('click', () => { state.kind = button.dataset.kind; render(); }),
-  );
-  const spoiler = document.getElementById('spoiler');
-  if (spoiler) {
-    spoiler.addEventListener('change', () => {
-      state.store.spoiler = spoiler.checked;
-      saveStore(state.store);
-      render();
-    });
-  }
-  $view.querySelectorAll('[data-open]').forEach((card) =>
-    card.addEventListener('click', (ev) => {
-      if (ev.target.closest('[data-toggle]')) return;
-      state.selectedId = Number(card.dataset.open);
-      render();
-    }),
-  );
-  $view.querySelectorAll('[data-toggle]').forEach((button) =>
-    button.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      toggleEarned(state.store, Number(button.dataset.toggle));
-      render();
-    }),
-  );
-  $view.querySelectorAll('[data-count]').forEach((button) =>
-    button.addEventListener('click', () => {
-      const trophy = selectedTrophy();
-      if (!trophy?.count) return;
-      setCount(state.store, trophy.id, (state.store.counts[trophy.id] ?? 0) + Number(button.dataset.count), trophy.count.target);
-      render();
-    }),
-  );
-  const notes = document.getElementById('notes');
-  if (notes) notes.addEventListener('input', () => setNote(state.store, state.selectedId, notes.value));
-  const exportBtn = document.getElementById('exportBtn');
-  if (exportBtn) exportBtn.addEventListener('click', () => exportProgress(state.store));
-  const importBtn = document.getElementById('importBtn');
-  const importFile = document.getElementById('importFile');
-  if (importBtn && importFile) {
-    importBtn.addEventListener('click', () => importFile.click());
-    importFile.addEventListener('change', () => {
-      if (!importFile.files[0]) return;
-      importProgress(importFile.files[0], (store) => { if (store) { state.store = store; render(); } });
-    });
-  }
-  const resetBtn = document.getElementById('resetBtn');
-  if (resetBtn) resetBtn.addEventListener('click', () => { state.store = resetProgress(); render(); });
-  $view.querySelectorAll('[data-jump]').forEach((el) =>
-    el.addEventListener('click', () => {
-      state.selectedId = Number(el.dataset.jump);
-      state.view = 'checklist';
-      render();
-    }),
-  );
+  search.addEventListener('input', () => { filters.query = search.value; refresh(); });
+
+  const bind = (id, key) => {
+    const node = document.getElementById(id);
+    node.addEventListener('change', () => { filters[key] = node.value; refresh(); });
+  };
+  bind('gradeFilter', 'grade');
+  bind('kindFilter', 'kind');
+  bind('earnedFilter', 'status');
+  bind('sortBy', 'sort');
+
+  const missableOnly = document.getElementById('missableOnly');
+  missableOnly.addEventListener('change', () => { filters.missableOnly = missableOnly.checked; refresh(); });
+
+  const spoiler = document.getElementById('spoilerToggle');
+  spoiler.checked = settings.spoilerShield;
+  spoiler.addEventListener('change', () => {
+    settings = saveSettings({ spoilerShield: spoiler.checked });
+    refresh();
+  });
 }
 
-document.addEventListener('keydown', (ev) => {
-  if (ev.target.matches('input, textarea')) return;
-  const views = ['checklist', 'roadmap', 'missables', 'settings'];
-  if (ev.key >= '1' && ev.key <= '4') { state.view = views[Number(ev.key) - 1]; render(); }
-  if (ev.key === '/') { ev.preventDefault(); document.getElementById('search')?.focus(); }
-  if (ev.key.toLowerCase() === 's') { state.store.spoiler = !state.store.spoiler; saveStore(state.store); render(); }
-  if (ev.key.toLowerCase() === 'e') exportProgress(state.store);
-});
+function wireTabs() {
+  for (const tab of document.querySelectorAll('.tabs [data-view]')) {
+    tab.addEventListener('click', () => {
+      activeView = tab.dataset.view;
+      showView(activeView);
+    });
+  }
+}
+
+function wireProgressActions() {
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(exportProgress(), null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'vice-ledger-progress.json';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+
+  document.getElementById('importFile').addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      importProgress(JSON.parse(await file.text()));
+      refresh();
+    } catch (error) {
+      detailPanel.replaceChildren();
+      const note = document.createElement('p');
+      note.className = 'placeholder';
+      note.textContent = `Import failed: ${error.message}. Pick a file exported from Vice Ledger.`;
+      detailPanel.append(note);
+    } finally {
+      event.target.value = '';
+    }
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', () => {
+    if (!window.confirm('Clear every tick in the ledger? Export first if you want a copy.')) return;
+    resetProgress();
+    refresh();
+  });
+}
 
 async function boot() {
+  loadProgress();
+  wireToolbar();
+  wireTabs();
+  wireProgressActions();
   try {
-    const response = await fetch('data/trophies.json');
-    if (!response.ok) throw new Error(`trophy data request failed (${response.status})`);
-    const data = await response.json();
-    state.trophies = data.trophies ?? data;
-    render();
-  } catch (err) {
-    // A blank ledger helps nobody: if the data cannot load (wrong folder,
-    // blocked fetch), say so plainly instead of leaving an empty shell.
-    $view.innerHTML = `<div class="empty">The trophy data could not be loaded (${err.message}). Serve the app/ folder with any static server, or open it through node serve.ts, and reload.</div>`;
+    await loadTrophies();
+  } catch (error) {
+    listView.replaceChildren();
+    const note = document.createElement('div');
+    note.className = 'empty';
+    note.textContent = `The trophy data could not be loaded (${error.message}). Serve the app/ folder with a static server (node serve.ts) and reload.`;
+    listView.append(note);
+    return;
   }
+  showView(activeView);
+  refresh();
 }
+
 boot();

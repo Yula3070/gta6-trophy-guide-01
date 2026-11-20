@@ -1,80 +1,118 @@
-// Vice Ledger progress store.
-//
-// Everything the tracker remembers — earned flags, per-trophy counters,
-// personal notes, and the spoiler-guard setting — lives in the browser's
-// localStorage under a single key. Nothing is sent anywhere; the export
-// button is the only way progress leaves, as a JSON file the reader saves.
+// Vice Ledger store: loads the trophy data and keeps the player's progress.
+// Progress is a set of earned trophy ids, saved in localStorage under one
+// key, and portable as a small JSON file through export/import.
 
-const STORAGE_KEY = 'vice-ledger-v1';
+const PROGRESS_KEY = 'vice-ledger-progress-v1';
+const SETTINGS_KEY = 'vice-ledger-settings-v1';
 
-const emptyStore = () => ({ earned: {}, counts: {}, notes: {}, spoiler: false });
+export const GRADES = ['platinum', 'gold', 'silver', 'bronze'];
+export const GRADE_RANK = { platinum: 0, gold: 1, silver: 2, bronze: 3 };
 
-export function loadStore() {
+let trophies = [];
+let earnedIds = new Set();
+let settings = { spoilerShield: true };
+
+export async function loadTrophies() {
+  const response = await fetch('data/trophies.json');
+  if (!response.ok) throw new Error(`trophy data failed to load (${response.status})`);
+  const doc = await response.json();
+  trophies = Array.isArray(doc) ? doc : doc.trophies;
+  return trophies;
+}
+
+export function allTrophies() {
+  return trophies;
+}
+
+export function trophyById(id) {
+  return trophies.find((t) => t.id === id) ?? null;
+}
+
+export function loadProgress() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return emptyStore();
-    return { ...emptyStore(), ...JSON.parse(raw) };
+    const raw = localStorage.getItem(PROGRESS_KEY);
+    earnedIds = new Set(raw ? JSON.parse(raw) : []);
   } catch {
-    return emptyStore();
+    earnedIds = new Set();
   }
+  return earnedIds;
 }
 
-export function saveStore(store) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-  } catch {
-    // Storage blocked or full: the guide still works for this visit.
-  }
+export function saveProgress() {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify([...earnedIds].sort((a, b) => a - b)));
 }
 
-export function toggleEarned(store, id) {
-  if (store.earned[id]) delete store.earned[id];
-  else store.earned[id] = true;
-  saveStore(store);
+export function isEarned(id) {
+  return earnedIds.has(id);
 }
 
-export function setCount(store, id, value, target) {
-  const clamped = Math.max(0, Math.min(target ?? value, value));
-  store.counts[id] = clamped;
-  if (target && clamped >= target) store.earned[id] = true;
-  saveStore(store);
+export function setEarned(id, earned) {
+  if (earned) earnedIds.add(id);
+  else earnedIds.delete(id);
+  saveProgress();
 }
 
-export function setNote(store, id, text) {
-  if (text.trim()) store.notes[id] = text;
-  else delete store.notes[id];
-  saveStore(store);
+export function earnedCount() {
+  return earnedIds.size;
 }
 
-export function exportProgress(store) {
-  const payload = JSON.stringify({ app: 'vice-ledger', version: 1, ...store }, null, 2);
-  const url = URL.createObjectURL(new Blob([payload], { type: 'application/json' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'vice-ledger-progress.json';
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-export function importProgress(file, done) {
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const parsed = JSON.parse(String(reader.result));
-      const store = { ...emptyStore(), ...parsed };
-      delete store.app;
-      delete store.version;
-      saveStore(store);
-      done(store, null);
-    } catch (err) {
-      done(null, err);
-    }
+export function exportProgress() {
+  return {
+    app: 'vice-ledger',
+    exportedAt: new Date().toISOString(),
+    earned: [...earnedIds].sort((a, b) => a - b),
   };
-  reader.readAsText(file);
+}
+
+export function importProgress(payload) {
+  const list = Array.isArray(payload) ? payload : payload?.earned;
+  if (!Array.isArray(list)) throw new Error('that file does not hold Vice Ledger progress');
+  const known = new Set(trophies.map((t) => t.id));
+  earnedIds = new Set(list.filter((id) => known.has(id)));
+  saveProgress();
+  return earnedIds.size;
 }
 
 export function resetProgress() {
-  const store = emptyStore();
-  saveStore(store);
-  return store;
+  earnedIds = new Set();
+  saveProgress();
+}
+
+export function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (raw) settings = { ...settings, ...JSON.parse(raw) };
+  } catch {
+    /* keep defaults */
+  }
+  return settings;
+}
+
+export function saveSettings(next) {
+  settings = { ...settings, ...next };
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  return settings;
+}
+
+export function progressStats() {
+  const perGrade = Object.fromEntries(GRADES.map((g) => [g, { earned: 0, total: 0 }]));
+  let minutesLeft = 0;
+  for (const t of trophies) {
+    const bucket = perGrade[t.grade];
+    if (bucket) {
+      bucket.total += 1;
+      if (earnedIds.has(t.id)) bucket.earned += 1;
+    }
+    if (!earnedIds.has(t.id)) minutesLeft += t.estMinutes ?? 0;
+  }
+  const total = trophies.length;
+  const earned = earnedIds.size;
+  return {
+    earned,
+    total,
+    percent: total === 0 ? 0 : Math.round((earned / total) * 100),
+    perGrade,
+    minutesLeft,
+    missablesLeft: trophies.filter((t) => t.missable && !earnedIds.has(t.id)).length,
+  };
 }
