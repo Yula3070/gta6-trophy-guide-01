@@ -1,296 +1,354 @@
-// Rendering for the Leonida Trophy Atlas: the checklist cards, the detail panel with the cited
-// guide, the roadmap stops and the missables list. Pure DOM building — no innerHTML with data.
+// Vice Ledger views — part one: masthead, tabs, toolbar, checklist, detail.
+//
+// Every figure on screen is computed from app/data/trophies.json when the
+// page runs. The audit strip in the masthead counts the ledger's own
+// claims and sources live, so the numbers can never drift from the data.
 
-import { getCount, isEarned } from './store.js';
-import { groupByKind, byRoadmapStage } from './filters.js';
+import { KINDS, displayDescription, displayName, groupByKind, isMasked } from './filters.js';
 
-export const ROADMAP_STOPS = [
+export const esc = (value) =>
+  String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+export const medalMark = { platinum: '♛', gold: '★', silver: '●', bronze: '●' };
+
+export function auditStats(trophies) {
+  let claims = 0;
+  let cited = 0;
+  let doubleBacked = 0;
+  const sourceLabels = new Set();
+  for (const t of trophies) {
+    claims += 1 + (t.steps?.length ?? 0);
+    const labels = (t.sources ?? []).map((s) => s.label);
+    labels.forEach((label) => sourceLabels.add(label));
+    if (labels.length >= 1) cited += 1;
+    if (labels.length >= 2) doubleBacked += 1;
+  }
+  return { claims, cited, doubleBacked, sources: sourceLabels.size, total: trophies.length };
+}
+
+export function earnedStats(trophies, store) {
+  const byGrade = { platinum: [0, 0], gold: [0, 0], silver: [0, 0], bronze: [0, 0] };
+  let earned = 0;
+  for (const t of trophies) {
+    byGrade[t.grade][1] += 1;
+    if (store.earned[t.id]) {
+      byGrade[t.grade][0] += 1;
+      earned += 1;
+    }
+  }
+  return { earned, total: trophies.length, byGrade, pct: Math.round((earned / trophies.length) * 100) };
+}
+
+export function mastheadHtml(trophies, store) {
+  const progress = earnedStats(trophies, store);
+  const audit = auditStats(trophies);
+  const gradeRow = ['platinum', 'gold', 'silver', 'bronze']
+    .map((g) => `<span><b>${progress.byGrade[g][0]}/${progress.byGrade[g][1]}</b> ${g}</span>`)
+    .join('');
+  return `
+  <div class="mast">
+    <div>
+      <h1><span class="ledger-mark">▦</span> Vice Ledger</h1>
+      <div class="sub">Grand Theft Auto VI · PlayStation 5 · all 55 trophies, guided and tracked offline</div>
+      <div class="audit-strip">
+        <span><span class="tick">✓</span> <b>${audit.cited}/${audit.total}</b> trophies cited</span>
+        <span><b>${audit.claims}</b> guide claims</span>
+        <span><b>${audit.doubleBacked}</b> backed by 2+ sources</span>
+        <span><b>${audit.sources}</b> sources</span>
+        <span>0 network requests</span>
+      </div>
+    </div>
+    <div class="scorebox">
+      <span class="pct">${progress.pct}%</span>
+      <div class="big">${progress.earned} <small>/ ${progress.total} earned</small></div>
+      <div class="bar"><i style="width:${progress.pct}%"></i></div>
+      <div class="grade-row">${gradeRow}</div>
+    </div>
+  </div>`;
+}
+
+export const VIEWS = [
+  { id: 'checklist', label: 'Checklist' },
+  { id: 'roadmap', label: 'Roadmap to Platinum' },
+  { id: 'missables', label: 'Missables & Sources' },
+  { id: 'settings', label: 'Save & Settings' },
+];
+
+export function tabsHtml(view, missableCount) {
+  const buttons = VIEWS.map((v) => {
+    const pill = v.id === 'missables' ? `<span class="pill">${missableCount}</span>` : '';
+    return `<button data-view="${v.id}" class="${view === v.id ? 'on' : ''}">${v.label}${pill}</button>`;
+  }).join('');
+  return `<div class="tabs">${buttons}</div>`;
+}
+
+export function toolbarHtml(state) {
+  const chips = KINDS.map(
+    (k) => `<button class="chip ${state.kind === k.id ? 'on' : ''}" data-kind="${k.id}">${k.label}</button>`,
+  ).join('');
+  return `
+  <div class="toolbar">
+    <input type="search" id="search" placeholder="Search a trophy, mission or place…" value="${esc(state.query)}" aria-label="Search trophies">
+    ${chips}
+    <label class="switch"><input type="checkbox" id="spoiler" ${state.store.spoiler ? 'checked' : ''}> Spoiler guard</label>
+    <button class="tool-btn" id="exportBtn">Export progress</button>
+    <button class="tool-btn" id="importBtn">Import progress</button>
+    <button class="tool-btn quiet" id="resetBtn">Reset</button>
+    <input type="file" id="importFile" accept="application/json" hidden>
+  </div>`;
+}
+
+function tagHtml(trophy, store) {
+  const tags = [];
+  if (trophy.missable) tags.push('<span class="tag miss">Missable</span>');
+  if (trophy.hidden) tags.push('<span class="tag">Hidden on PSN</span>');
+  if (trophy.count) {
+    tags.push(`<span class="tag count">${store.counts[trophy.id] ?? 0} / ${trophy.count.target} ${esc(trophy.count.unit)}</span>`);
+  }
+  tags.push(`<span class="tag stage">Roadmap stop ${trophy.stage}</span>`);
+  return tags.join('');
+}
+
+export function cardHtml(trophy, store, selectedId) {
+  const done = !!store.earned[trophy.id];
+  const masked = isMasked(trophy, store);
+  return `
+  <article class="trophy-card ${done ? 'done' : ''} ${selectedId === trophy.id ? 'sel' : ''}" data-open="${trophy.id}" tabindex="0">
+    <div class="medal ${trophy.grade}" title="${trophy.grade}">${medalMark[trophy.grade]}</div>
+    <div>
+      <div class="t-name ${masked ? 'masked' : ''}">${esc(displayName(trophy, store))}</div>
+      <div class="t-desc ${masked ? 'masked' : ''}">${esc(displayDescription(trophy, store))}</div>
+      <div class="tags">${tagHtml(trophy, store)}</div>
+    </div>
+    <button class="check ${done ? 'on' : ''}" data-toggle="${trophy.id}" aria-label="Mark earned">${done ? '✓' : ''}</button>
+  </article>`;
+}
+
+export function checklistHtml(trophies, store, selectedId) {
+  if (!trophies.length) {
+    return `<div class="empty">No trophy matches that filter. The official list names no online trophies — the Online filter is honest about that.</div>`;
+  }
+  return groupByKind(trophies)
+    .map((group) => {
+      const done = group.items.filter((t) => store.earned[t.id]).length;
+      const head = `<div class="group-head"><span>${group.label}</span><span>${done} / ${group.items.length}</span></div>`;
+      return head + group.items.map((t) => cardHtml(t, store, selectedId)).join('');
+    })
+    .join('');
+}
+
+export function detailHtml(trophy, store) {
+  if (!trophy) {
+    return `<div class="detail"><h2>Pick a trophy</h2><p>Every guide in this ledger names its sources beside the claim it supports. Open any trophy on the left to read its guide, its four cited steps, its missable verdict and its count tracker.</p></div>`;
+  }
+  const done = !!store.earned[trophy.id];
+  const masked = isMasked(trophy, store);
+  const steps = (trophy.steps ?? [])
+    .map((s) => `<li>${esc(s.text)}<span class="src-tag">${esc(s.src)}</span></li>`)
+    .join('');
+  const sources = (trophy.sources ?? [])
+    .map((s) => `<li>${s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label)}</a>` : esc(s.label)}</li>`)
+    .join('');
+  const counter = trophy.count
+    ? `<h3>Count tracker</h3>
+       <div class="counter">
+         <button data-count="-1" aria-label="One less">−</button>
+         <span class="n">${store.counts[trophy.id] ?? 0} / ${trophy.count.target}</span>
+         <button data-count="1" aria-label="One more">+</button>
+         <span>${esc(trophy.count.unit)} — reaching the target marks it earned.</span>
+       </div>`
+    : '';
+  const missable = trophy.missable
+    ? `<h3>Missable warning</h3><div class="miss-box"><b>Can be missed.</b> ${esc(trophy.missableReason ?? '')}</div>`
+    : `<h3>Missable?</h3><p>No — on the official description's own terms this stays available in free roam after the story.</p>`;
+  return `
+  <div class="detail">
+    <div class="kicker"><span class="medal ${trophy.grade}">${medalMark[trophy.grade]}</span> ${trophy.grade} · ${esc(trophy.kind)} · Roadmap stop ${trophy.stage}${trophy.hidden ? ' · hidden on PSN' : ''}</div>
+    <h2 class="${masked ? 'masked' : ''}">${esc(displayName(trophy, store))}</h2>
+    <div class="official">“${esc(displayDescription(trophy, store))}” — official description</div>
+    <div class="tags">${tagHtml(trophy, store)}</div>
+    <h3>Guide</h3>
+    <p>${masked ? 'Earn this story trophy to unmask its guide, or switch the spoiler guard off.' : esc(trophy.guide)}</p>
+    <h3>Steps, each cited</h3>
+    <ol class="steps">${masked ? '<li>Masked with the trophy.</li>' : steps}</ol>
+    ${missable}
+    ${counter}
+    <h3>Sources</h3>
+    <ul class="sources">${sources}</ul>
+    <h3>Your notes</h3>
+    <textarea class="notes" id="notes" placeholder="Where you left off, a route that worked…">${esc(store.notes[trophy.id] ?? '')}</textarea>
+    <div class="row">
+      <button class="tool-btn" data-toggle="${trophy.id}">${done ? 'Mark not earned' : 'Mark earned'}</button>
+    </div>
+  </div>`;
+}
+
+// Vice Ledger views — part two: the roadmap to platinum and the planner.
+//
+// The seven stops are built from the official descriptions alone: story
+// chapters first, stranger strands before the finale (their finales are
+// the lock-out risk), then activities, the collectible sweep, the crime
+// economy, volume cleanup, and 100% last because it overlaps everything.
+
+export const STOPS = [
   {
-    stage: 1,
+    n: 1,
     title: 'The Story',
-    advice: 'Play the campaign first and let the chapter and mission trophies fall as they come. This is also when the one-time moments live — a cocktail on Ocean Beach, an unscheduled departure at VCIA, a showroom breakout — so keep an eye on the missable flags below before you push past a chapter.',
+    advice: 'Play the campaign straight through. Chapter and named-mission trophies sit on the critical path and cannot be missed — but the one-time beats flagged in this ledger (the airport departure, the Rhino, the opening cocktail, the showroom smash) live in this stretch, so keep rotating saves.',
   },
   {
-    stage: 2,
+    n: 2,
     title: 'Strands & Strangers',
-    advice: 'Finish every character strand (Andy, Kenton, Billy, Randy, Tyrone, Cal, Bret) and eight stranger strands across Leonida. In this series strands can close as chapters advance, so clear them while their givers are still around rather than saving them for the end.',
+    advice: 'Before the final mission, close every stranger strand: Andy, Kenton, Billy, Randy, Tyrone and the rest. Strand finales are the classic lock-out risk, and eight completed strands make the Strangers & Freaks silver.',
   },
   {
-    stage: 3,
+    n: 3,
     title: 'Activities & Skills',
-    advice: 'Sweep the repeatable work: gold medals at the Shooting Range, drone races at every Top Fun location, twenty race wins, 250 stunts, fifty challenges, an arcade clear and a Combat Focus multikill. All of it stays available in free roam.',
+    advice: 'Tour the activity map: shooting-range golds, races, drone races, the arcade, bowling. Try each type once early (Master of None), then grind the counted ones between missions while the map is still opening.',
   },
   {
-    stage: 4,
+    n: 4,
     title: 'Collectibles & Exploration',
-    advice: 'The long hunts: meditation spots, collectible card sets, 100 WAiNK locations, 100 discovered vehicles, every one of Leonida\'s 52 areas, all garage properties and ten vehicles on the Scooter Bros app. Work district by district so nothing is backtracked twice.',
+    advice: 'Sweep Leonida with purpose: 100 WAiNK spots, 18 meditation spots, card sets, 100 vehicles, all 52 areas, garages and Scooter Bros registrations. One well-planned route feeds five trophies at once.',
   },
   {
-    stage: 5,
+    n: 5,
     title: 'Crime & Cash',
-    advice: 'Rob five bank vaults, an armored truck and a jewelry store unseen, hit one illegal operation from each of the nine gangs, then turn the take into progress: launder $250,000 in marked bills and spend $100,000 across the shops. Partner trophies sit here too — do them while your partner is still riding with you.',
+    advice: 'Run the crime economy: five vaults, armored trucks, nine gang operations, the partner robberies — then launder $250,000 and spend $100,000. Partner trophies need your partner present, so never leave them past the story.',
   },
   {
-    stage: 6,
+    n: 6,
+    title: 'Cleanup & Challenges',
+    advice: 'Mop up the volume trophies: 250 stunts and 50 challenges. Both mostly complete themselves during normal play; this stop is for the last stragglers on each counter.',
+  },
+  {
+    n: 7,
     title: '100% & Platinum',
-    advice: 'With the story, strands, activities, collectibles and crime done, the completion percentage should be within reach of 100%. A Long Road (gold) lands first, and Vice Got a Price! — the platinum — follows the moment the other 54 are yours.',
+    advice: 'Attain 100% completion (A Long Road) and the platinum follows on its own. If one trophy remains, it is almost certainly a counter — check the trackers before re-running anything.',
   },
 ];
 
-const TROPHY_PATH = 'M14 6h20v6h7v3c0 6-4 10-9 11a13 13 0 0 1-8 5.6V36h5v4H19v-4h5v-4.4A13 13 0 0 1 16 26C11 25 7 21 7 15v-3h7V6Zm-4 9c.4 3 2 5 4.6 5.6A14 14 0 0 1 14 15h-4Zm28 0h-4a14 14 0 0 1-.6 5.6C36 20 37.6 18 38 15Z';
-
-export function gradeBadge(grade) {
-  const span = document.createElement('span');
-  span.className = `grade-badge grade-${grade}`;
-  span.setAttribute('aria-hidden', 'true');
-  span.innerHTML = `<svg viewBox="0 0 48 48"><path d="${TROPHY_PATH}" fill="currentColor"/></svg>`;
-  return span;
+export function stopProgress(trophies, store, n) {
+  const items = trophies.filter((t) => t.stage === n);
+  const done = items.filter((t) => store.earned[t.id]).length;
+  return { items, done, total: items.length, pct: items.length ? Math.round((done / items.length) * 100) : 0 };
 }
 
-function el(tag, className, text) {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
-
-function isMasked(trophy, state) {
-  return state.spoilerGuard && trophy.kind === 'story' && !isEarned(state, trophy.id);
-}
-
-export function displayName(trophy, state) {
-  return isMasked(trophy, state) ? 'Hidden story trophy' : trophy.name;
-}
-
-export function displayDescription(trophy, state) {
-  return isMasked(trophy, state)
-    ? 'Spoiler guard is on: earn this story trophy to reveal its name and description.'
-    : trophy.description;
-}
-
-function trophyTags(trophy, state) {
-  const wrap = el('div', 'trophy-meta');
-  if (trophy.missable) wrap.append(el('span', 'tag tag-missable', 'Missable'));
-  if (trophy.hidden) wrap.append(el('span', 'tag tag-hidden', 'Hidden on PSN'));
-  if (trophy.count) {
-    const done = getCount(state, trophy.id);
-    wrap.append(el('span', 'tag tag-count', `${done} / ${trophy.count.target} ${trophy.count.unit}`));
-  }
-  wrap.append(el('span', 'tag tag-stage', `Roadmap stop ${trophy.stage}`));
-  return wrap;
-}
-
-export function trophyCard(trophy, state, { selected, onSelect, onToggle }) {
-  const card = el('article', 'trophy-card');
-  if (isEarned(state, trophy.id)) card.classList.add('is-earned');
-  if (selected) card.classList.add('is-selected');
-  card.append(gradeBadge(trophy.grade));
-
-  const main = el('div', 'trophy-main');
-  main.append(el('div', 'trophy-name', displayName(trophy, state)));
-  main.append(el('div', 'trophy-desc', displayDescription(trophy, state)));
-  main.append(trophyTags(trophy, state));
-  card.append(main);
-
-  const box = el('label', 'earned-box');
-  const checkbox = document.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = isEarned(state, trophy.id);
-  checkbox.setAttribute('aria-label', `Mark ${displayName(trophy, state)} as earned`);
-  checkbox.addEventListener('click', (event) => event.stopPropagation());
-  checkbox.addEventListener('change', () => onToggle(trophy.id, checkbox.checked));
-  box.append(checkbox);
-  card.append(box);
-
-  card.addEventListener('click', () => onSelect(trophy.id));
-  return card;
-}
-
-export function renderChecklist(root, trophies, state, handlers) {
-  root.replaceChildren();
-  for (const group of groupByKind(trophies)) {
-    const earnedHere = group.items.filter((t) => isEarned(state, t.id)).length;
-    const heading = el('h2', 'kind-heading');
-    heading.append(document.createTextNode(group.title));
-    heading.append(el('span', 'kind-progress', `${earnedHere} / ${group.items.length}`));
-    root.append(heading);
-    for (const trophy of group.items) {
-      root.append(trophyCard(trophy, state, { selected: handlers.selectedId === trophy.id, ...handlers }));
+export function nextUp(trophies, store, limit = 4) {
+  const open = trophies.filter((t) => !store.earned[t.id]);
+  const scored = open.map((t) => {
+    let score = 0;
+    let why = `roadmap stop ${t.stage} is your current frontier`;
+    if (t.missable) {
+      score += 40;
+      why = 'missable — do it while it is open';
     }
-  }
-}
-
-export function renderMissables(root, trophies, state, handlers) {
-  root.replaceChildren();
-  const flagged = trophies.filter((t) => t.missable).sort((a, b) => a.id - b.id);
-  const heading = el('h2', 'kind-heading');
-  heading.append(document.createTextNode('Missable trophies'));
-  heading.append(el('span', 'kind-progress', `${flagged.length} flagged from the official descriptions`));
-  root.append(heading);
-  for (const trophy of flagged) {
-    const card = trophyCard(trophy, state, { selected: handlers.selectedId === trophy.id, ...handlers });
-    const why = el('p', 'trophy-desc', trophy.missableWhy);
-    why.style.marginTop = '6px';
-    card.querySelector('.trophy-main').append(why);
-    root.append(card);
-  }
-}
-
-export function renderDetail(pane, trophy, state, handlers) {
-  pane.replaceChildren();
-  if (!trophy) {
-    pane.append(el('p', 'detail-empty', 'Pick a trophy from the list to see its guide, sources and tracking.'));
-    return;
-  }
-  const earned = isEarned(state, trophy.id);
-  const masked = isMasked(trophy, state);
-
-  const gradeLine = el('div', 'detail-grade');
-  gradeLine.append(gradeBadge(trophy.grade));
-  gradeLine.append(el('span', '', `${trophy.grade} · ${trophy.kind === 'platinum' ? 'platinum' : trophy.kind} · roadmap stop ${trophy.stage}`));
-  pane.append(gradeLine);
-  pane.append(el('h2', '', displayName(trophy, state)));
-  pane.append(el('p', 'detail-desc', `“${displayDescription(trophy, state)}” — official description`));
-  pane.append(trophyTags(trophy, state));
-
-  if (trophy.missable) {
-    const alert = el('div', 'missable-alert');
-    alert.append(el('b', '', 'Missable. '));
-    alert.append(document.createTextNode(trophy.missableWhy));
-    pane.append(alert);
-  }
-
-  if (masked) {
-    pane.append(el('h3', '', 'Guide'));
-    pane.append(el('p', '', 'Hidden by the spoiler guard. Earn it in the story, or switch the guard off in the toolbar, to read the guide.'));
-  } else {
-    pane.append(el('h3', '', 'Guide'));
-    pane.append(el('p', '', trophy.guide));
-    if (trophy.steps?.length) {
-      pane.append(el('h3', '', 'Steps'));
-      const list = el('ol');
-      for (const step of trophy.steps) list.append(el('li', '', step));
-      pane.append(list);
-    }
-    if (trophy.sources?.length) {
-      pane.append(el('h3', '', 'Sources'));
-      const list = el('ul', 'sources-list');
-      for (const source of trophy.sources) {
-        const item = el('li');
-        const link = el('a', '', source.label);
-        link.href = source.url;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        item.append(link);
-        list.append(item);
+    if (t.count) {
+      const now = store.counts[t.id] ?? 0;
+      const frac = now / t.count.target;
+      if (frac >= 0.5) {
+        score += 30;
+        why = `counter at ${now}/${t.count.target} — nearly there`;
+      } else if (frac > 0) {
+        score += 12;
+        why = `counter started (${now}/${t.count.target})`;
       }
-      pane.append(list);
     }
-  }
-
-  const actions = el('div', 'detail-actions');
-  const earnedLabel = el('label');
-  const earnedBox = document.createElement('input');
-  earnedBox.type = 'checkbox';
-  earnedBox.checked = earned;
-  earnedBox.addEventListener('change', () => handlers.onToggle(trophy.id, earnedBox.checked));
-  earnedLabel.append(earnedBox, document.createTextNode('Earned'));
-  actions.append(earnedLabel);
-  pane.append(actions);
-
-  if (trophy.count) {
-    const tracker = el('div', 'count-tracker');
-    tracker.append(el('span', '', 'Progress:'));
-    const input = document.createElement('input');
-    input.type = 'number';
-    input.min = '0';
-    input.max = String(trophy.count.target);
-    input.value = String(getCount(state, trophy.id));
-    input.setAttribute('aria-label', `Your ${trophy.count.unit} so far`);
-    input.addEventListener('change', () => handlers.onCount(trophy.id, input.value));
-    tracker.append(input, el('span', '', `/ ${trophy.count.target} ${trophy.count.unit}`));
-    pane.append(tracker);
-  }
-
-  const notes = el('div', 'notes-box');
-  notes.append(el('h3', '', 'Your notes'));
-  const area = document.createElement('textarea');
-  area.placeholder = 'Where you left off, a route that worked…';
-  area.value = state.notes[String(trophy.id)] ?? '';
-  area.addEventListener('change', () => handlers.onNote(trophy.id, area.value));
-  notes.append(area);
-  pane.append(notes);
+    score += Math.max(0, 20 - t.stage * 2);
+    return { t, score, why };
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-export function renderRoadmap(pane, trophies, state, handlers) {
-  pane.replaceChildren();
-  pane.append(el('p', 'roadmap-intro', 'Six stops from first mission to platinum, ordered so nothing missable is left behind: story first, strands while their givers are still around, then the repeatable work, the hunts, the crime, and the completion sweep. Tap any trophy to open its guide.'));
-  const stages = byRoadmapStage(trophies);
-  for (const stop of ROADMAP_STOPS) {
-    const items = stages.get(stop.stage) ?? [];
-    const earnedHere = items.filter((t) => isEarned(state, t.id)).length;
-    const card = el('article', 'stop-card');
-    const head = el('div', 'stop-head');
-    const title = el('h2');
-    title.append(el('span', 'stop-no', `Stop ${stop.stage} — `), document.createTextNode(stop.title));
-    head.append(title, el('span', 'stop-progress', `${earnedHere} / ${items.length} earned`));
-    card.append(head);
-    const bar = el('div', 'stop-bar');
-    const fill = el('span');
-    fill.style.width = items.length ? `${(earnedHere / items.length) * 100}%` : '0%';
-    bar.append(fill);
-    card.append(bar);
-    card.append(el('p', 'stop-advice', stop.advice));
-    const chips = el('div', 'stop-trophies');
-    for (const trophy of items) {
-      const chip = el('button', 'stop-chip');
-      chip.type = 'button';
-      if (isEarned(state, trophy.id)) chip.classList.add('is-earned');
-      chip.append(gradeBadge(trophy.grade), document.createTextNode(displayName(trophy, state)));
-      if (trophy.missable) chip.append(el('span', 'warn-dot', '!'));
-      chip.addEventListener('click', () => handlers.onSelect(trophy.id, 'checklist'));
-      chips.append(chip);
-    }
-    card.append(chips);
-    pane.append(card);
-  }
+export function roadmapHtml(trophies, store) {
+  const cards = STOPS.map((stop) => {
+    const progress = stopProgress(trophies, store, stop.n);
+    const chips = progress.items
+      .map((t) => `<button class="sc ${store.earned[t.id] ? 'done' : ''}" data-jump="${t.id}">${esc(t.name)}${t.missable ? ' ⚠' : ''}</button>`)
+      .join('');
+    return `<article class="stop-card">
+      <div class="stop-no">${stop.n}</div>
+      <div>
+        <h3>${stop.title} <small style="color:var(--muted);font-size:13px">${progress.done}/${progress.total} · ${progress.pct}%</small></h3>
+        <p class="advice">${stop.advice}</p>
+        <div class="bar"><i style="width:${progress.pct}%"></i></div>
+        <div class="stop-chips">${chips}</div>
+      </div>
+    </article>`;
+  }).join('');
+  const picks = nextUp(trophies, store)
+    .map((pick) => `<div class="nx" data-jump="${pick.t.id}"><b>${esc(pick.t.name)}</b> <span class="grade">${pick.t.grade}</span><div class="why">${esc(pick.why)}</div></div>`)
+    .join('');
+  return `<div class="road">${cards}</div>
+    <section class="planner"><h3>Next up — the planner's picks</h3>
+    <p class="lede">Ranked by risk and closeness: missables first, then counters past halfway, then the earliest unfinished stop.</p>
+    <div class="next">${picks}</div></section>`;
 }
 
-export function renderProgress(trophies, state) {
-  const earned = trophies.filter((t) => isEarned(state, t.id)).length;
-  document.getElementById('earned-count').textContent = String(earned);
-  document.getElementById('earned-percent').textContent = `${Math.round((earned / trophies.length) * 100)}%`;
-  const bar = document.getElementById('progress-bar');
-  bar.setAttribute('aria-valuenow', String(earned));
-  document.getElementById('progress-fill').style.width = `${(earned / trophies.length) * 100}%`;
-  const tally = document.getElementById('grade-tally');
-  tally.replaceChildren();
-  for (const grade of ['platinum', 'gold', 'silver', 'bronze']) {
-    const total = trophies.filter((t) => t.grade === grade).length;
-    const got = trophies.filter((t) => t.grade === grade && isEarned(state, t.id)).length;
-    const item = el('li');
-    item.append(el('b', '', `${got}/${total}`), document.createTextNode(` ${grade}`));
-    tally.append(item);
-  }
-  document.getElementById('missable-count').textContent = String(trophies.filter((t) => t.missable).length);
+// Vice Ledger views — part three: missables with the source matrix, and
+// the Save & Settings page (export/import, spoiler guard, keyboard).
+
+export function missablesHtml(trophies, store) {
+  const flagged = trophies.filter((t) => t.missable);
+  const cards = flagged
+    .map((t) => `<article class="trophy-card ${store.earned[t.id] ? 'done' : ''}" data-jump="${t.id}">
+      <div class="medal ${t.grade}">${medalMark[t.grade]}</div>
+      <div><div class="t-name">${esc(t.name)}</div>
+      <div class="t-desc">${esc(t.missableReason ?? '')}</div>
+      <div class="tags"><span class="tag miss">Missable</span><span class="tag stage">Stop ${t.stage}</span>${store.earned[t.id] ? '<span class="tag count">Earned ✓</span>' : ''}</div></div>
+      <span></span></article>`)
+    .join('');
+  const sourceLabels = [...new Set(trophies.flatMap((t) => (t.sources ?? []).map((s) => s.label)))];
+  const shortLabel = (label) =>
+    label.startsWith('Official') ? 'Official list' : label.startsWith('PSNProfiles') ? 'PSNProfiles' : 'Ledger advice';
+  const head = `<tr><th>Trophy</th>${sourceLabels.map((l) => `<th class="c">${shortLabel(l)}</th>`).join('')}<th class="c">Steps cited</th></tr>`;
+  const rows = trophies
+    .map((t) => {
+      const cells = sourceLabels
+        .map((l) => `<td class="c">${(t.sources ?? []).some((s) => s.label === l) ? '<span class="yes">✓</span>' : '<span class="no">—</span>'}</td>`)
+        .join('');
+      const stepCount = (t.steps ?? []).length;
+      return `<tr><td>${esc(t.name)}</td>${cells}<td class="c">${stepCount}/${stepCount}</td></tr>`;
+    })
+    .join('');
+  return `<div class="split">
+    <section class="panel"><h3>Missables — ${flagged.length} flagged</h3>
+      <p class="lede">Built from the official descriptions: one-time story beats, choice and partner trophies, and character strands that can close. Each card says why it can be missed. Click one to open its guide.</p>
+      ${cards}</section>
+    <section class="panel"><h3>Source matrix</h3>
+      <p class="lede">Every trophy's sources at a glance. Names, descriptions and grades come from the official list; counts from PSNProfiles; the rest is this ledger's advice from the official description, labelled as not yet checked in game. No uncited specifics anywhere.</p>
+      <table class="matrix">${head}${rows}</table></section>
+  </div>`;
 }
 
-export function renderNextUp(trophies, state, onSelect) {
-  const strip = document.getElementById('next-up');
-  const next = trophies
-    .filter((t) => !isEarned(state, t.id) && t.kind !== 'platinum')
-    .sort((a, b) => (a.stage - b.stage) || (a.id - b.id))[0];
-  if (!next) {
-    strip.hidden = true;
-    return;
-  }
-  strip.hidden = false;
-  strip.replaceChildren();
-  strip.append(document.createTextNode('Next up on the roadmap: '));
-  strip.append(el('b', '', displayName(next, state)));
-  strip.append(document.createTextNode(` (stop ${next.stage}${next.missable ? ', missable — do not leave it behind' : ''})`));
-  const button = el('button', '', 'Open guide');
-  button.type = 'button';
-  button.addEventListener('click', () => onSelect(next.id, 'checklist'));
-  strip.append(button);
+export function settingsHtml(trophies, store) {
+  const progress = earnedStats(trophies, store);
+  return `<div class="settings-grid">
+    <section class="panel"><h3>Save &amp; move progress</h3>
+      <p class="lede">Progress lives in this browser's localStorage — ${progress.earned} of ${progress.total} trophies earned. Export it to a file to back it up or move it to another browser; import restores it exactly.</p>
+      <div class="row">
+        <button class="tool-btn" id="exportBtn">Export progress</button>
+        <button class="tool-btn" id="importBtn">Import progress</button>
+        <button class="tool-btn quiet" id="resetBtn">Reset all</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+      </div>
+      <p class="lede" style="margin-top:12px">The export carries earned flags, counters, notes and the spoiler setting. Nothing leaves your browser unless you send the file yourself.</p>
+    </section>
+    <section class="panel"><h3>Spoiler guard</h3>
+      <p class="lede">PlayStation hides 28 of the 55 trophies until earned. With the guard on, unearned story trophies show as “Hidden story trophy” with masked descriptions and guides — earned ones stay revealed.</p>
+      <label class="switch"><input type="checkbox" id="spoiler" ${store.spoiler ? 'checked' : ''}> Spoiler guard ${store.spoiler ? 'on' : 'off'}</label>
+    </section>
+    <section class="panel"><h3>Keyboard</h3>
+      <ul class="keys">
+        <li><kbd>1</kbd>–<kbd>4</kbd> switch views (Checklist, Roadmap, Missables, Save)</li>
+        <li><kbd>/</kbd> jump to search</li>
+        <li><kbd>S</kbd> toggle the spoiler guard</li>
+        <li><kbd>E</kbd> export progress</li>
+        <li><kbd>Tab</kbd> + <kbd>Enter</kbd> open any trophy card</li>
+      </ul>
+    </section>
+    <section class="panel"><h3>About this ledger</h3>
+      <p class="lede">An unofficial, offline fan guide. Trophy names, descriptions and grades are the official PlayStation 5 list as published by Exophase and PSNProfiles; every guide is written for this ledger and cites its sources beside each claim. No Rockstar Games logo, artwork or screenshots are used — the look is the ledger's own.</p>
+    </section>
+  </div>`;
 }

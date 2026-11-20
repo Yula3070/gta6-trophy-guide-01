@@ -1,182 +1,147 @@
-// Leonida Trophy Atlas — bootstrap and wiring.
-// Loads app/data/trophies.json from this same static site (no other network use), restores the
-// player's progress from localStorage, and connects the toolbar, views and detail panel.
-// Screenshot scenes are plain URL parameters: ?detail=<id> opens a trophy, ?view=roadmap or
-// ?view=missable picks a view, ?spoiler=on turns the spoiler guard on for the visit.
+// Vice Ledger boot: load the trophy data, render the four views, wire input.
+//
+// Progress lives in localStorage (see store.js). The ?seed=demo parameter
+// exists so screenshots can show a tracker mid-journey; it writes the same
+// localStorage a real reader's progress would, nothing more.
 
-import {
-  loadState, saveState, setEarned, setCount, seedDemoIfScene, exportState, importState,
-} from './store.js';
-import { KIND_FILTERS, applyFilters } from './filters.js';
-import {
-  renderChecklist, renderMissables, renderDetail, renderRoadmap, renderProgress, renderNextUp,
-} from './views.js';
+import { loadStore, saveStore, toggleEarned, setCount, setNote, exportProgress, importProgress, resetProgress } from './store.js';
+import { filterTrophies } from './filters.js';
+import { mastheadHtml, tabsHtml, toolbarHtml, checklistHtml, detailHtml, roadmapHtml, missablesHtml, settingsHtml } from './views.js';
 
 const params = new URLSearchParams(location.search);
-const state = seedDemoIfScene(loadState(), params);
-if (params.get('spoiler') === 'on') state.spoilerGuard = true;
-
-let trophies = [];
-let view = params.get('view') === 'roadmap' || params.get('view') === 'missable' ? params.get('view') : 'checklist';
-let kindFilter = 'all';
-let searchText = '';
-let selectedId = Number(params.get('detail')) || null;
-
-const listRoot = document.getElementById('list-root');
-const detailPane = document.getElementById('detail-pane');
-const roadmapPane = document.getElementById('roadmap-pane');
-const emptyNote = document.getElementById('empty-note');
-const ioNote = document.getElementById('io-note');
-
-function note(message) {
-  ioNote.textContent = message;
-}
-
-function persist() {
-  saveState(state);
-}
-
-const handlers = {
-  get selectedId() { return selectedId; },
-  onSelect(id, goToView) {
-    selectedId = id;
-    if (goToView) view = goToView;
-    render();
-    if (goToView) window.scrollTo({ top: 0, behavior: 'instant' });
-  },
-  onToggle(id, value) {
-    setEarned(state, id, value);
-    persist();
-    render();
-  },
-  onCount(id, value) {
-    setCount(state, id, value);
-    persist();
-    render();
-  },
-  onNote(id, value) {
-    if (value.trim()) state.notes[String(id)] = value;
-    else delete state.notes[String(id)];
-    persist();
-  },
+const state = {
+  trophies: [],
+  store: loadStore(),
+  view: params.get('view') ?? 'checklist',
+  kind: 'all',
+  query: '',
+  selectedId: params.get('detail') ? Number(params.get('detail')) : 17,
 };
 
+if (params.get('spoiler') === 'on') state.store.spoiler = true;
+
+function seedDemoProgress() {
+  const earnedIds = [2, 3, 4, 8, 9, 10, 15, 16, 19, 21, 35, 36, 39, 41, 44, 45, 51, 55];
+  for (const id of earnedIds) state.store.earned[id] = true;
+  state.store.counts = { 15: 250, 17: 23, 19: 20, 25: 5, 31: 37, 35: 100, 52: 84000, 53: 41200 };
+  delete state.store.earned[17];
+  state.store.notes[17] = 'Gold on the pistol lanes; rifle lanes still silver — replay those first.';
+  saveStore(state.store);
+}
+if (params.get('seed') === 'demo' && !state.store.earned[2]) seedDemoProgress();
+
+const $masthead = document.getElementById('masthead');
+const $tabs = document.getElementById('tabs');
+const $view = document.getElementById('view');
+const $colophon = document.getElementById('colophon');
+
 function selectedTrophy() {
-  return trophies.find((t) => t.id === selectedId) ?? null;
+  return state.trophies.find((t) => t.id === state.selectedId) ?? null;
 }
 
 function render() {
-  renderProgress(trophies, state);
-  renderNextUp(trophies, state, handlers.onSelect);
-  for (const tab of document.querySelectorAll('.view-tabs .tab')) {
-    tab.classList.toggle('is-active', tab.dataset.view === view);
+  $masthead.innerHTML = mastheadHtml(state.trophies, state.store);
+  $tabs.innerHTML = tabsHtml(state.view, state.trophies.filter((t) => t.missable).length);
+  $colophon.innerHTML = `<span>Vice Ledger — an unofficial fan guide. Trophy names, descriptions and grades: the official PS5 list (Exophase / PSNProfiles). Guides are this ledger's own words and cite their sources; no Rockstar logo or artwork.</span><span>Works offline · progress in localStorage</span>`;
+
+  if (state.view === 'checklist') {
+    const shown = filterTrophies(state.trophies, state);
+    $view.innerHTML =
+      toolbarHtml(state) +
+      `<div class="panes"><section>${checklistHtml(shown, state.store, state.selectedId)}</section><aside>${detailHtml(selectedTrophy(), state.store)}</aside></div>`;
+  } else if (state.view === 'roadmap') {
+    $view.innerHTML = roadmapHtml(state.trophies, state.store);
+  } else if (state.view === 'missables') {
+    $view.innerHTML = missablesHtml(state.trophies, state.store);
+  } else if (state.view === 'settings') {
+    $view.innerHTML = settingsHtml(state.trophies, state.store);
   }
-  const inRoadmap = view === 'roadmap';
-  roadmapPane.hidden = !inRoadmap;
-  document.querySelector('.layout').style.display = inRoadmap ? 'none' : '';
-  if (inRoadmap) {
-    renderRoadmap(roadmapPane, trophies, state, handlers);
-    return;
-  }
-  const visible = applyFilters(trophies, { kind: kindFilter, search: searchText });
-  if (view === 'missable') renderMissables(listRoot, visible, state, handlers);
-  else renderChecklist(listRoot, visible, state, handlers);
-  if (visible.length === 0) {
-    emptyNote.hidden = false;
-    emptyNote.textContent = kindFilter === 'online' && !searchText
-      ? 'The official 55-trophy list names no online trophies — every trophy here is earned in the story world of Leonida. This filter is ready if a future list adds them.'
-      : 'No trophy matches that filter and search. Clear the search or pick another kind.';
-  } else {
-    emptyNote.hidden = true;
-  }
-  renderDetail(detailPane, selectedTrophy(), state, handlers);
+  wireEvents();
 }
 
-function buildChips() {
-  const wrap = document.getElementById('kind-chips');
-  for (const filter of KIND_FILTERS) {
-    const chip = document.createElement('button');
-    chip.type = 'button';
-    chip.className = 'chip';
-    chip.textContent = filter.label;
-    chip.dataset.kind = filter.key;
-    chip.classList.toggle('is-active', filter.key === kindFilter);
-    chip.addEventListener('click', () => {
-      kindFilter = filter.key;
-      for (const other of wrap.children) other.classList.toggle('is-active', other === chip);
+function wireEvents() {
+  $tabs.querySelectorAll('[data-view]').forEach((button) =>
+    button.addEventListener('click', () => { state.view = button.dataset.view; render(); }),
+  );
+  const search = document.getElementById('search');
+  if (search) {
+    search.addEventListener('input', () => {
+      state.query = search.value;
       render();
+      const again = document.getElementById('search');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
     });
-    wrap.append(chip);
   }
-}
-
-function wireToolbar() {
-  document.getElementById('search').addEventListener('input', (event) => {
-    searchText = event.target.value.trim();
-    render();
-  });
-  const spoiler = document.getElementById('spoiler-toggle');
-  spoiler.checked = state.spoilerGuard;
-  spoiler.addEventListener('change', () => {
-    state.spoilerGuard = spoiler.checked;
-    persist();
-    render();
-  });
-  for (const tab of document.querySelectorAll('.view-tabs .tab')) {
-    tab.addEventListener('click', () => {
-      view = tab.dataset.view;
+  $view.querySelectorAll('[data-kind]').forEach((button) =>
+    button.addEventListener('click', () => { state.kind = button.dataset.kind; render(); }),
+  );
+  const spoiler = document.getElementById('spoiler');
+  if (spoiler) {
+    spoiler.addEventListener('change', () => {
+      state.store.spoiler = spoiler.checked;
+      saveStore(state.store);
       render();
     });
   }
-  document.getElementById('export-btn').addEventListener('click', () => {
-    const blob = new Blob([exportState(state)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'leonida-trophy-atlas-progress.json';
-    link.click();
-    URL.revokeObjectURL(url);
-    note('Progress exported to leonida-trophy-atlas-progress.json — keep it safe, import it anywhere.');
-  });
-  document.getElementById('import-file').addEventListener('change', async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      const next = importState(await file.text());
-      Object.assign(state, next);
-      document.getElementById('spoiler-toggle').checked = state.spoilerGuard;
-      persist();
+  $view.querySelectorAll('[data-open]').forEach((card) =>
+    card.addEventListener('click', (ev) => {
+      if (ev.target.closest('[data-toggle]')) return;
+      state.selectedId = Number(card.dataset.open);
       render();
-      note('Progress imported. Welcome back to Leonida.');
-    } catch {
-      note('That file is not an atlas progress export — nothing was changed.');
-    }
-    event.target.value = '';
-  });
-  document.getElementById('reset-btn').addEventListener('click', () => {
-    state.earned = {};
-    state.counts = {};
-    state.notes = {};
-    persist();
-    render();
-    note('Progress cleared. A fresh run at the platinum starts now.');
-  });
+    }),
+  );
+  $view.querySelectorAll('[data-toggle]').forEach((button) =>
+    button.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      toggleEarned(state.store, Number(button.dataset.toggle));
+      render();
+    }),
+  );
+  $view.querySelectorAll('[data-count]').forEach((button) =>
+    button.addEventListener('click', () => {
+      const trophy = selectedTrophy();
+      if (!trophy?.count) return;
+      setCount(state.store, trophy.id, (state.store.counts[trophy.id] ?? 0) + Number(button.dataset.count), trophy.count.target);
+      render();
+    }),
+  );
+  const notes = document.getElementById('notes');
+  if (notes) notes.addEventListener('input', () => setNote(state.store, state.selectedId, notes.value));
+  const exportBtn = document.getElementById('exportBtn');
+  if (exportBtn) exportBtn.addEventListener('click', () => exportProgress(state.store));
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
+  if (importBtn && importFile) {
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', () => {
+      if (!importFile.files[0]) return;
+      importProgress(importFile.files[0], (store) => { if (store) { state.store = store; render(); } });
+    });
+  }
+  const resetBtn = document.getElementById('resetBtn');
+  if (resetBtn) resetBtn.addEventListener('click', () => { state.store = resetProgress(); render(); });
+  $view.querySelectorAll('[data-jump]').forEach((el) =>
+    el.addEventListener('click', () => {
+      state.selectedId = Number(el.dataset.jump);
+      state.view = 'checklist';
+      render();
+    }),
+  );
 }
 
-async function start() {
-  try {
-    const response = await fetch('data/trophies.json');
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    trophies = Array.isArray(data) ? data : data.trophies;
-  } catch {
-    listRoot.textContent = 'The trophy data could not be loaded. Serve the app folder over HTTP (node serve.ts) and reload.';
-    return;
-  }
-  if (selectedId !== null && !selectedTrophy()) selectedId = null;
-  buildChips();
-  wireToolbar();
+document.addEventListener('keydown', (ev) => {
+  if (ev.target.matches('input, textarea')) return;
+  const views = ['checklist', 'roadmap', 'missables', 'settings'];
+  if (ev.key >= '1' && ev.key <= '4') { state.view = views[Number(ev.key) - 1]; render(); }
+  if (ev.key === '/') { ev.preventDefault(); document.getElementById('search')?.focus(); }
+  if (ev.key.toLowerCase() === 's') { state.store.spoiler = !state.store.spoiler; saveStore(state.store); render(); }
+  if (ev.key.toLowerCase() === 'e') exportProgress(state.store);
+});
+
+async function boot() {
+  const response = await fetch('data/trophies.json');
+  const data = await response.json();
+  state.trophies = data.trophies ?? data;
   render();
 }
-
-start();
+boot();
