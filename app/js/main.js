@@ -139,9 +139,16 @@ document.addEventListener('keydown', (ev) => {
 });
 
 async function boot() {
-  const response = await fetch('data/trophies.json');
-  const data = await response.json();
-  state.trophies = data.trophies ?? data;
-  render();
+  try {
+    const response = await fetch('data/trophies.json');
+    if (!response.ok) throw new Error(`trophy data request failed (${response.status})`);
+    const data = await response.json();
+    state.trophies = data.trophies ?? data;
+    render();
+  } catch (err) {
+    // A blank ledger helps nobody: if the data cannot load (wrong folder,
+    // blocked fetch), say so plainly instead of leaving an empty shell.
+    $view.innerHTML = `<div class="empty">The trophy data could not be loaded (${err.message}). Serve the app/ folder with any static server, or open it through node serve.ts, and reload.</div>`;
+  }
 }
 boot();
